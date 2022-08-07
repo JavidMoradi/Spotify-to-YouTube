@@ -13,6 +13,8 @@ How to Run
 - Navigate to Google Developers OAuth 2.0 Playground, and on top right section, press setting and check the "Use your own OAuth credentials" box. Then, provide your both client id and secret. 
 - On the left, authorize the YouTube API, and press the Authorize APIs button.
 - You should be given a Authorization code that can be exchanged for YouTube Access Token. Please note that the token expires after a duration.
+- Paste the required information on the main.js and run the project.
+  - To run the project, XAMPP is recommended. Please follow [this](https://www.youtube.com/watch?v=K-qXW9ymeYQ) tutorial to get started with XAMPP.
 <br/>
 
 Noteworthy remark that this project might not be funtional for an extensive list of Spotify songs due to limited daily quota of YouTube Data Api v3.
