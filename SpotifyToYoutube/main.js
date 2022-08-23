@@ -5,8 +5,7 @@ const accessToken = "[Spotify ACCESS TOKEN]";
 // YouTube Credential
 const YT_my_api_key = "[YouTube API KEY]";
 const YT_accessToken = "[YouTube ACCESS TOKEN]";
-
-const YT_clientID = "YouTube CLIENT ID";
+const YT_clientID = "[YouTube CLIENT ID]";
 
 // ...
 var songNames = [];
@@ -46,16 +45,20 @@ window.onload = async () => {
             });
 
             // Print each song's name on the display
-            // please note that for simplicity,
-            // the UI section of the project is omitted
             let myHtml = "";
             let i = 1;
+            myHtml +=
+              '<table id="songs" class="display" style="width:99%; margin: 0 auto;">';
+            myHtml += "<thead><tr><th>Position</th><th>Name</th></tr></thead>";
+            myHtml += "<tbody>";
             await songNames.forEach((e) => {
-              myHtml += i + ". " + e + "<br>";
+              myHtml +=
+                "<tr>" + "<td>" + i + "</td>" + "<td>" + e + "</td>" + "</tr>";
               i++;
             });
+            myHtml += "</tbody></table>";
             myHtml +=
-              '<button type="button" class="btn btn-success" onclick="execute()">Add All</button>';
+              '<button type="button" class="btn btn-success" style="margin-left: .2cm; margin-bottom: .2cm; margin-top: .2cm" onclick="execute()">Add All</button>';
             document.getElementById("mainDiv").innerHTML = myHtml;
           });
       });
