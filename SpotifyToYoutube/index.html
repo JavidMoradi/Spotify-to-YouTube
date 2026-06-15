@@ -2,45 +2,132 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Spotify to Youtube</title>
-    <h1
-      style="
-        font-family: 'Times New Roman', Times, serif;
-        font-weight: bold;
-        margin-left: 0.2cm;
-      "
-    >
-      Spotify to Youtube
-    </h1>
-  </head>
 
-  <body>
-    <div id="mainDiv"></div>
-
-    <script src="main.js"></script>
+    <!-- Bootstrap CSS -->
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css"
       rel="stylesheet"
       integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx"
       crossorigin="anonymous"
     />
+
+    <style>
+      /* ── Auth screen: centered vertically and horizontally ── */
+      #authSection {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        gap: 1rem;
+      }
+
+      #authSection h1 {
+        font-family: 'Times New Roman', Times, serif;
+        font-weight: bold;
+        margin-bottom: 1rem;
+      }
+
+      /* Each button + status label sit side-by-side in a row */
+      .auth-row {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+      }
+
+      .connected-label {
+        color: green;
+        font-weight: bold;
+      }
+
+      /* ── Song table screen: centered horizontally ── */
+      #mainDiv {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2rem;
+      }
+
+      /* Excel-like table styling */
+      .excel-table {
+        border-collapse: collapse;
+        width: 75%;
+        font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+
+      .excel-table th {
+        background-color: #4472C4;
+        color: white;
+        border: 1px solid #2F528F;
+        padding: 8px 16px;
+        text-align: left;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .excel-table td {
+        border: 1px solid #BFC7D5;
+        padding: 6px 16px;
+        background-color: white;
+      }
+
+      .excel-table tr:nth-child(even) td {
+        background-color: #D9E1F2;
+      }
+
+      .excel-table tr:hover td {
+        background-color: #B8CCE4;
+      }
+
+      /* Album art column: fixed width, no text padding */
+      .excel-table .art-cell {
+        width: 60px;
+        text-align: center;
+        padding: 4px 8px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Step 1: Connect accounts (hidden after Initiate is clicked) -->
+    <div id="authSection">
+      <h1>Spotify to Youtube</h1>
+
+      <div class="auth-row">
+        <button id="spotifyBtn" class="btn btn-success">Connect Spotify</button>
+        <span id="spotifyStatus" class="connected-label"></span>
+      </div>
+
+      <div class="auth-row">
+        <button id="youtubeBtn" class="btn btn-danger">Connect YouTube</button>
+        <span id="youtubeStatus" class="connected-label"></span>
+      </div>
+
+      <!-- Enabled once both accounts are connected -->
+      <button id="initiateBtn" class="btn btn-primary" disabled>
+        Initiate
+      </button>
+    </div>
+
+    <!-- Step 2: Song table and "Add All" button injected here by main.js -->
+    <div id="mainDiv"></div>
+
+    <!-- Google Identity Services — provides the OAuth popup for YouTube -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <!-- Bootstrap JS -->
     <script
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"
       integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa"
       crossorigin="anonymous"
     ></script>
 
-    <link
-      rel="stylesheet"
-      type="text/css"
-      href="https://cdn.datatables.net/v/dt/dt-1.12.1/datatables.min.css"
-    />
-
-    <script
-      type="text/javascript"
-      src="https://cdn.datatables.net/v/dt/dt-1.12.1/datatables.min.js"
-    ></script>
+    <!-- Entry point — type="module" defers execution and enables ES module imports -->
+    <script type="module" src="js/app.js"></script>
   </body>
 </html>

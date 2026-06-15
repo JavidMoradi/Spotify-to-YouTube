@@ -1,0 +1,7 @@
+// Copy this file to config.js and fill in your own Client IDs before running.
+// See README.md for instructions on obtaining each value.
+export const SPOTIFY_CLIENT_ID = "your_spotify_client_id_here";
+export const GOOGLE_CLIENT_ID  = "your_google_client_id_here";
+
+// Computed dynamically so no change is needed when the server URL changes.
+export const SPOTIFY_REDIRECT_URI = window.location.origin + window.location.pathname;
