@@ -1,6 +1,8 @@
-# Spotify to YouTube
+# Segue
 
-Transfers all songs from a user's Spotify playlists into a new private YouTube playlist. Authorization is handled entirely in the browser — no backend required.
+Transfers all your songs from Spotify playlists into YouTube Music, or vice versa! 
+
+Authorization is handled entirely in the browser — no backend required.
 
 ---
 

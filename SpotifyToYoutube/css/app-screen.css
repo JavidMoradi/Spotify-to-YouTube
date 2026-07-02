@@ -61,6 +61,19 @@
 html.light .pill-select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(20,20,30,0.5)' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+
+/* Custom page-size input — shown only when "Custom…" is selected in
+   #pageSizeFilter (see app.js). */
+.pill-input {
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border);
+  background: var(--input-bg);
+  width: 84px;
+}
+.pill-input::placeholder { color: var(--text-tertiary); }
 .search-wrap {
   display: flex;
   align-items: center;
@@ -111,6 +124,19 @@ html.light .pill-select {
   transition: opacity 0.2s ease;
 }
 
+/* Wraps each song-row card with its position number, kept outside the
+   card's own glass background rather than inside its padding. */
+.song-row-wrap { display: flex; align-items: center; gap: 10px; }
+.song-index {
+  width: 26px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 .song-row {
   display: flex;
   align-items: center;
@@ -118,6 +144,8 @@ html.light .pill-select {
   border-radius: 18px;
   padding: 12px 18px;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
   transition: transform var(--motion-fast), background var(--motion-fast), opacity var(--motion-fast);
 }
 .song-row-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -155,16 +183,30 @@ html.light .pill-select {
 }
 
 .added-actions { display: flex; align-items: center; gap: 10px; }
-.added-pill {
+
+/* One pill style, recolored per outcome so a long list (especially after
+   "Add all") is scannable at a glance instead of every row reading identically
+   regardless of what actually happened. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--success);
-  background: var(--success-soft);
   padding: 6px 14px;
   border-radius: 999px;
+  white-space: nowrap;
 }
+.status-icon { font-size: 11px; line-height: 1; }
+
+.status-pill.status-added     { color: var(--success); background: var(--success-soft); }
+.status-pill.status-duplicate { color: var(--accent);  background: var(--accent-soft); }
+.status-pill.status-notfound  { color: var(--warning); background: var(--warning-soft); }
+.status-pill.status-failed    { color: var(--error);   background: var(--error-soft); }
+
 .view-match-link { font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 600; }
 .research-btn { border: none; background: none; font-size: 12px; color: var(--text-tertiary); text-decoration: underline; padding: 0; }
+.retry-btn { border: none; background: none; font-size: 12px; color: var(--error); text-decoration: underline; padding: 0; font-weight: 600; }
 
 .empty-state { text-align: center; padding: 40px 0; color: var(--text-tertiary); font-size: 14px; }
 
@@ -201,4 +243,9 @@ html.light .pill-select {
   font-size: 13.5px;
   font-weight: 700;
   box-shadow: 0 12px 30px var(--accent-soft);
+}
+/* Shown mid-batch — the same button becomes "Stop" (see app.js's runAddAll). */
+.add-all-btn.is-running {
+  background: var(--error);
+  box-shadow: 0 12px 30px var(--error-soft);
 }

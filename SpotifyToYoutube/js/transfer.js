@@ -10,7 +10,7 @@ import { fetchAllYouTubePlaylists } from './youtubeSource.js';
 import { ensureYouTubePlaylist, searchVideo, addVideoToPlaylist } from './youtubeDestination.js';
 import { YouTubeQuotaError, YouTubeAuthError } from './youtubeClient.js';
 import { normalizeTitle } from './textMatch.js';
-import { markSongAdded } from './ui.js';
+import { markSongStatus } from './ui.js';
 import { showToast } from './toast.js';
 
 // "spotify-to-youtube" (default) or "youtube-to-spotify" — set by the
@@ -180,51 +180,70 @@ async function insertWithSelfHeal(index, playlist, match) {
   }
 }
 
-// index -> { match, matchUrl }, remembered across page navigation for the
-// current session (so pagination doesn't "forget" a song was added).
-export const addedMatches = new Map();
+// index -> { status, match, matchUrl }, remembered across page navigation
+// for the current session (so pagination doesn't "forget" a song's outcome).
+// status is one of "added" (freshly inserted), "duplicate" (search found it
+// already in the destination playlist), "notfound" (destination search came
+// up empty), or "failed" (the insert request itself errored). match/matchUrl
+// are only set for added/duplicate.
+export const songStatuses = new Map();
 
-function recordAdded(index, match, dest) {
-  const matchUrl = dest.viewUrl(match);
-  addedMatches.set(index, { match, matchUrl });
-  markSongAdded(index, match, matchUrl);
+function recordStatus(index, status, match, dest) {
+  const matchUrl = match ? dest.viewUrl(match) : null;
+  songStatuses.set(index, { status, match, matchUrl });
+  markSongStatus(index, status, match, matchUrl);
 }
 
 // Discards a song's cached match (used by the "Re-search" control) so the
 // next Add attempt searches fresh instead of reusing a wrong match.
 export function forgetMatch(index) {
   clearCachedMatch(matchCacheKey(index));
-  addedMatches.delete(index);
+  songStatuses.delete(index);
 }
 
-// Transfers every song matching the active search/playlist filter (across
-// all pages, not just the one currently on screen) to a destination
-// playlist that mirrors its source playlist's name, reusing an existing
-// destination playlist of that name (and skipping songs already in it)
-// rather than creating a new one. `onAuthExpired` is called (instead of
+// Transfers every song in `matchingIndexes` — the caller decides the scope
+// (app.js only ever passes the current page's songs, so a huge filtered
+// list can be moved in deliberate chunks by paging through it) — to a
+// destination playlist that mirrors its source playlist's name, reusing an
+// existing destination playlist of that name (and skipping songs already in
+// it) rather than creating a new one. `onAuthExpired` is called (instead of
 // this module depending on app.js directly) if the destination's
 // credentials turn out to be invalid.
 // Note: YouTube Data API v3 has a daily quota (~10,000 units). Each search costs
 // ~100 units and each insert ~50 units, so large libraries may hit the limit early
 // when YouTube is the destination. Spotify has no equivalent hard quota.
+let addAllCancelled = false;
+
+// Signals a running addAllToDestination to stop once the song currently in
+// flight finishes — called when the user clicks "Stop" (app.js's Add All
+// button mid-run turns into a Stop button; see runAddAll).
+export function cancelAddAll() {
+  addAllCancelled = true;
+}
+
 export async function addAllToDestination(matchingIndexes, onAuthExpired) {
   const dest = currentDestination();
+  addAllCancelled = false;
 
   for (const i of matchingIndexes) {
+    if (addAllCancelled) break;
     try {
       const playlist = await getPlaylistFor(songs.playlists[i]);
 
       const match = await getOrSearchMatch(i);
-      if (!match) continue;
+      if (!match) {
+        recordStatus(i, "notfound", null, dest);
+        continue;
+      }
 
       if (dest.isDuplicate(playlist, match)) {
-        recordAdded(i, match, dest);
+        recordStatus(i, "duplicate", match, dest);
         continue;
       }
 
       const added = await insertWithSelfHeal(i, playlist, match);
       dest.recordExisting(playlist, added);
-      recordAdded(i, added, dest);
+      recordStatus(i, "added", added, dest);
     } catch (err) {
       if (dest.isQuotaError(err)) {
         notifyQuotaExceeded();
@@ -235,9 +254,10 @@ export async function addAllToDestination(matchingIndexes, onAuthExpired) {
         onAuthExpired();
         return;
       }
-      // One-off failure (network blip, unexpected API error) — log it and move
-      // on to the next song rather than aborting the whole batch.
+      // One-off failure (network blip, unexpected API error) — mark this row
+      // failed and move on to the next song rather than aborting the whole batch.
       console.error(`Failed to add "${songs.names[i]}":`, err);
+      recordStatus(i, "failed", null, dest);
     }
   }
 }
@@ -259,29 +279,29 @@ export async function addSongToDestination(index, onAuthExpired) {
 
     if (!match) {
       showToast(`Couldn't find a match for "${songs.names[index]}" on ${dest.label}.`);
-      btn.disabled = false;
-      btn.textContent = "Add";
+      recordStatus(index, "notfound", null, dest);
       return;
     }
 
     if (dest.isDuplicate(playlist, match)) {
       showToast(`"${songs.names[index]}" is already in the ${playlistName} playlist on ${dest.label}.`);
-      recordAdded(index, match, dest);
+      recordStatus(index, "duplicate", match, dest);
       return;
     }
 
     const added = await insertWithSelfHeal(index, playlist, match);
     dest.recordExisting(playlist, added);
-    recordAdded(index, added, dest);
+    recordStatus(index, "added", added, dest);
   } catch (err) {
-    btn.disabled = false;
-    btn.textContent = "Add";
-
     if (dest.isQuotaError(err)) {
+      btn.disabled = false;
+      btn.textContent = "Add";
       notifyQuotaExceeded();
       return;
     }
     if (dest.isAuthError(err)) {
+      btn.disabled = false;
+      btn.textContent = "Add";
       showToast(`Your ${dest.label} connection has expired. Please reconnect.`);
       onAuthExpired();
       return;
@@ -289,6 +309,7 @@ export async function addSongToDestination(index, onAuthExpired) {
 
     console.error(`Failed to add "${songs.names[index]}":`, err);
     showToast(`Something went wrong adding "${songs.names[index]}" — please try again.`);
+    recordStatus(index, "failed", null, dest);
   }
 }
 
@@ -296,6 +317,6 @@ export async function addSongToDestination(index, onAuthExpired) {
 // itself is NOT cleared (see state.js) since it isn't account-specific.
 export function resetTransferState() {
   playlistCache.clear();
-  addedMatches.clear();
+  songStatuses.clear();
   setDirection("spotify-to-youtube"); // also persists the reset, not just the in-memory default
 }

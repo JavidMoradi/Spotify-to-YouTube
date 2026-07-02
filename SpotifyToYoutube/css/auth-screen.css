@@ -17,6 +17,19 @@
 .auth-card { width: 440px; max-width: 100%; border-radius: 32px; padding: 40px 36px; }
 
 .auth-heading { text-align: center; margin-bottom: 28px; }
+
+/* Icon + wordmark lockup — the app's brand name, shown once per session
+   right where a user first lands, above the "Move your music" tagline. */
+.brand-lockup { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+.brand-wordmark {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 .auth-heading h1 {
   font-size: 26px;
   font-weight: 700;

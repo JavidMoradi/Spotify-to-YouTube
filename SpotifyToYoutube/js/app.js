@@ -6,12 +6,12 @@ import { connectSpotify, exchangeSpotifyCode, fetchSpotifyProfile } from './spot
 import { connectYouTube } from './youtubeClient.js';
 import {
   setDirection, currentSourceLabel, currentSourceFetcher, currentSourceKey, currentDestinationLabel,
-  addedMatches, addAllToDestination, addSongToDestination, forgetMatch, resetTransferState,
+  songStatuses, addAllToDestination, addSongToDestination, forgetMatch, resetTransferState, cancelAddAll,
 } from './transfer.js';
 import {
   markConnected, checkBothConnected, showAppScreen, showAuthScreen, resetToAuthScreen,
   resetSongRow, populatePlaylistFilter, setSourceDirection, lockDirectionToggle,
-  getMatchingIndexes, buildLibraryShell, renderPage, renderPaginationControls,
+  getMatchingIndexes, buildLibraryShell, renderPage, renderPaginationControls, setAddAllLabel,
   initTheme, toggleTheme, startLoadingTimeout, cancelLoadingTimeout, showLoadingTimeoutMessage,
 } from './ui.js';
 
@@ -151,7 +151,7 @@ function refreshFilterAndRender() {
 }
 
 function renderCurrentPage() {
-  renderPage(songs, matchingIndexes, currentPage, pageSize, addedMatches);
+  renderPage(songs, matchingIndexes, currentPage, pageSize, songStatuses);
   renderPaginationControls(currentPage, matchingIndexes.length, pageSize);
 }
 
@@ -159,6 +159,37 @@ function goToPage(delta) {
   const totalPages = pageSize === Infinity ? 1 : Math.max(1, Math.ceil(matchingIndexes.length / pageSize));
   currentPage = Math.min(Math.max(currentPage + delta, 1), totalPages);
   renderCurrentPage();
+}
+
+// The songs actually visible right now — "Add all" only ever acts on this,
+// not the whole filtered list across every page, so a large library can be
+// moved in deliberate chunks (set a page size, add a page, go to the next).
+function currentPageIndexes() {
+  return pageSize === Infinity
+    ? matchingIndexes
+    : matchingIndexes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+}
+
+// Turns the Add All button into a Stop button for the duration of the
+// batch — clicking it again while running calls cancelAddAll() (see the
+// mainDiv click listener below) instead of starting a second batch.
+async function runAddAll() {
+  const btn = document.getElementById("addAllBtn");
+  if (!btn) return;
+  const targetIndexes = currentPageIndexes();
+
+  btn.textContent = "Stop";
+  btn.classList.add("is-running");
+
+  await addAllToDestination(targetIndexes, logout);
+
+  // Re-fetch rather than reuse `btn` — a Stop mid-run can trigger logout()
+  // (auth expired), which may have already torn down #mainDiv by now.
+  const stillThere = document.getElementById("addAllBtn");
+  if (stillThere) {
+    stillThere.classList.remove("is-running");
+    setAddAllLabel(targetIndexes.length);
+  }
 }
 
 function logout() {
@@ -208,7 +239,27 @@ document.getElementById("searchInput").addEventListener("input", refreshFilterAn
 document.getElementById("playlistFilter").addEventListener("change", refreshFilterAndRender);
 
 document.getElementById("pageSizeFilter").addEventListener("change", (e) => {
+  const customInput = document.getElementById("customPageSizeInput");
+
+  if (e.target.value === "custom") {
+    // Wait for an actual number — the input listener below applies it.
+    customInput.style.display = "";
+    customInput.focus();
+    return;
+  }
+
+  customInput.style.display = "none";
   pageSize    = e.target.value === "all" ? Infinity : Number(e.target.value);
+  currentPage = 1;
+  renderCurrentPage();
+});
+
+// Lets a user move songs in whatever chunk size they choose (e.g. 18 at a
+// time) instead of being limited to the preset 50/100/200 options.
+document.getElementById("customPageSizeInput").addEventListener("input", (e) => {
+  const value = Math.floor(Number(e.target.value));
+  if (!value || value < 1) return; // ignore while the field is empty/invalid mid-typing
+  pageSize    = value;
   currentPage = 1;
   renderCurrentPage();
 });
@@ -217,8 +268,15 @@ document.getElementById("pageSizeFilter").addEventListener("change", (e) => {
 // the stable parent instead of binding to individual buttons.
 document.getElementById("mainDiv").addEventListener("click", (e) => {
   if (e.target.id === "addAllBtn") {
-    addAllToDestination(matchingIndexes, logout);
-  } else if (e.target.matches(".add-song-btn")) {
+    if (e.target.classList.contains("is-running")) {
+      cancelAddAll();
+    } else {
+      runAddAll();
+    }
+  } else if (e.target.matches(".add-song-btn") || e.target.matches(".retry-btn")) {
+    // Retry reuses the same flow as a fresh Add — getOrSearchMatch/insertWithSelfHeal
+    // already reuse a cached match when there is one, so a "notfound" retry re-searches
+    // while a "failed" retry re-attempts the insert without spending a new search.
     addSongToDestination(Number(e.target.dataset.index), logout);
   } else if (e.target.matches(".re-search-btn")) {
     const index = Number(e.target.dataset.index);

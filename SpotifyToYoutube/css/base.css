@@ -60,7 +60,7 @@ button:active:not(:disabled) { transform: translateY(0); }
    gradient badge (not theme-dependent), so one file/rule set covers both
    light and dark mode without separate variants. ── */
 .app-icon { display: block; border-radius: 22%; }
-.app-icon-auth { width: 56px; height: 56px; margin: 0 auto 14px; box-shadow: 0 10px 24px var(--accent-soft); }
+.app-icon-brand { width: 34px; height: 34px; box-shadow: 0 6px 14px var(--accent-soft); }
 .app-icon-nav { width: 22px; height: 22px; }
 
 /* ── Ambient decorative glow blobs ── */
@@ -78,12 +78,34 @@ button:active:not(:disabled) { transform: translateY(0); }
 .glow-a { top: -10%; left: -5%; background: var(--glow-a); }
 .glow-b { top: 60%; left: 70%; background: var(--glow-b); animation-delay: -7s; }
 
-/* ── Theme toggle: always visible, independent of which screen shows ── */
-.theme-toggle {
+/* ── Floating bottom-right controls: bug report + theme toggle, stacked —
+   always visible, independent of which screen shows ── */
+.floating-controls {
   position: fixed;
   bottom: 20px;
   right: 20px;
   z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.bug-report-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform var(--motion-fast);
+}
+.bug-report-btn:hover { transform: translateY(-1px); }
+
+.theme-toggle {
   width: 52px;
   height: 30px;
   border-radius: 999px;

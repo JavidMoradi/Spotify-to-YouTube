@@ -166,6 +166,9 @@ export function resetToAuthScreen() {
   document.getElementById("searchInput").value = "";
   document.getElementById("playlistFilter").innerHTML = `<option value="">All Playlists</option>`;
   document.getElementById("pageSizeFilter").value = "100";
+  const customPageSizeInput = document.getElementById("customPageSizeInput");
+  customPageSizeInput.value = "";
+  customPageSizeInput.style.display = "none";
 
   const spotifyBtn = document.getElementById("spotifyBtn");
   spotifyBtn.textContent = "Connect";
@@ -243,25 +246,49 @@ function addButtonHtml(index) {
   return `<button type="button" class="add-btn add-song-btn" id="addSongBtn-${index}" data-index="${index}">Add</button>`;
 }
 
+// One pill per outcome, recolored via css/app-screen.css's .status-* classes
+// so a long list (especially after "Add all") is scannable at a glance:
+// "added" (we just inserted it), "duplicate" (search found it already in the
+// destination playlist — no insert needed), "notfound" (destination search
+// came up empty), "failed" (insert itself errored, e.g. a transient network
+// blip). matchUrl/match are only present for added/duplicate.
+const STATUS_ICON  = { added: "✓", duplicate: "◆", notfound: "⚠", failed: "⚠" };
+const STATUS_LABEL = {
+  added:     "Added",
+  duplicate: "Already in playlist",
+  notfound:  "No match found",
+  failed:    "Failed",
+};
+
 // matchUrl is precomputed by app.js (it knows whether the destination is
 // YouTube or Spotify) — ui.js stays destination-agnostic.
-function addedCellHtml(index, match, matchUrl) {
-  return `
-    <div class="added-actions">
-      <div class="added-pill">Added</div>
-      <a href="${matchUrl}" target="_blank" rel="noopener noreferrer" class="view-match-link" title="${escapeHtml(match.title)}">View match</a>
-      <button type="button" class="research-btn re-search-btn" data-index="${index}">Re-search</button>
-    </div>`;
+function statusCellHtml(index, status, match, matchUrl) {
+  const pill = `<div class="status-pill status-${status}"><span class="status-icon">${STATUS_ICON[status]}</span>${STATUS_LABEL[status]}</div>`;
+
+  const viewMatchLink = matchUrl
+    ? `<a href="${matchUrl}" target="_blank" rel="noopener noreferrer" class="view-match-link" title="${escapeHtml(match.title)}">View match</a>`
+    : "";
+
+  // added/duplicate already have a match — "Re-search" discards it and
+  // starts over, for when the match itself might be wrong. notfound/failed
+  // have no match (or a request that simply didn't go through) — "Retry"
+  // re-attempts the same add instead of discarding anything. Reuses the
+  // addSongBtn-${index} id so addSongToDestination's existing button lookup
+  // (disabling it, showing "Adding...") works unchanged for a retry.
+  const actionBtn = (status === "added" || status === "duplicate")
+    ? `<button type="button" class="research-btn re-search-btn" data-index="${index}">Re-search</button>`
+    : `<button type="button" class="retry-btn" id="addSongBtn-${index}" data-index="${index}">Retry</button>`;
+
+  return `<div class="added-actions">${pill}${viewMatchLink}${actionBtn}</div>`;
 }
 
-// Marks a row as added and shows a link to the matched song plus a
-// "Re-search" control, so a wrong match (e.g. a cover version outranking the
-// original) can be spotted and corrected instead of silently trusted forever.
-// No-ops if the row isn't the one currently on screen (a different page).
-export function markSongAdded(index, match, matchUrl) {
+// Marks a row with the outcome of an add attempt (see statusCellHtml above
+// for the four possible statuses). No-ops if the row isn't the one currently
+// on screen (a different page).
+export function markSongStatus(index, status, match, matchUrl) {
   const cell = document.getElementById(`addCell-${index}`);
   if (!cell) return;
-  fadeSwap(cell, () => { cell.innerHTML = addedCellHtml(index, match, matchUrl); });
+  fadeSwap(cell, () => { cell.innerHTML = statusCellHtml(index, status, match, matchUrl); });
 }
 
 // Reverts a row back to its initial "Add" button — used after "Re-search" is
@@ -272,36 +299,45 @@ export function resetSongRow(index) {
   fadeSwap(cell, () => { cell.innerHTML = addButtonHtml(index); });
 }
 
-// addedEntry is { match, matchUrl } from app.js's addedMatches map, or
-// undefined if this song hasn't been added this session.
-function buildRow(songs, i, addedEntry) {
+// statusEntry is { status, match, matchUrl } from app.js's songStatuses map,
+// or undefined if this song hasn't been attempted this session. ordinal is
+// this song's 1-based position in the current filtered/searched list (not
+// the raw library) — renumbered from 1 whenever the filter changes, and
+// continuous across pages so it lines up with the "showing A-B of N" label.
+function buildRow(songs, i, statusEntry, ordinal) {
   const artists  = songs.artists[i].map((a) => a.name).join(", ");
   const playlist = songs.playlists[i];
   const album    = songs.albums[i];
   const name     = songs.names[i];
   const metaText = `${artists} · ${album}`;
-  const addCell  = addedEntry ? addedCellHtml(i, addedEntry.match, addedEntry.matchUrl) : addButtonHtml(i);
+  const addCell  = statusEntry
+    ? statusCellHtml(i, statusEntry.status, statusEntry.match, statusEntry.matchUrl)
+    : addButtonHtml(i);
 
   return `
-    <div class="glass song-row">
-      <div class="song-row-left">
-        <img class="song-art" width="46" height="46" src="${songs.albumArts[i]}" alt="Album art" loading="lazy">
-        <div class="song-info">
-          <div class="song-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-          <div class="song-meta" title="${escapeHtml(metaText)}">${escapeHtml(metaText)}</div>
+    <div class="song-row-wrap">
+      <span class="song-index">${ordinal}</span>
+      <div class="glass song-row">
+        <div class="song-row-left">
+          <img class="song-art" width="46" height="46" src="${songs.albumArts[i]}" alt="Album art" loading="lazy">
+          <div class="song-info">
+            <div class="song-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+            <div class="song-meta" title="${escapeHtml(metaText)}">${escapeHtml(metaText)}</div>
+          </div>
         </div>
-      </div>
-      <div class="song-row-right">
-        <div class="playlist-tag">${escapeHtml(playlist)}</div>
-        <div id="addCell-${i}">${addCell}</div>
+        <div class="song-row-right">
+          <div class="playlist-tag">${escapeHtml(playlist)}</div>
+          <div id="addCell-${i}">${addCell}</div>
+        </div>
       </div>
     </div>`;
 }
 
 // Builds the static library shell (empty song list + pagination controls +
 // footer actions). Rendered once per Initiate; only the song list and
-// pagination label are replaced after that (see renderPage).
-// destinationName labels the "Add all" button, e.g. "Add all to Youtube".
+// pagination label are replaced after that (see renderPage). destinationName
+// is stashed on the button's dataset so setAddAllLabel can relabel it later
+// without needing the destination threaded through every call site.
 export function buildLibraryShell(destinationName) {
   return `
     <div id="songList" class="song-list"></div>
@@ -314,29 +350,46 @@ export function buildLibraryShell(destinationName) {
 
     <div class="footer-actions">
       <button type="button" class="back-to-top-btn" id="backToTopBtn">Back to top</button>
-      <button type="button" class="add-all-btn" id="addAllBtn">
+      <button type="button" class="add-all-btn" id="addAllBtn" data-destination="${escapeHtml(destinationName)}">
         Add all to ${escapeHtml(destinationName)}
       </button>
     </div>`;
 }
 
+// Labels the "Add all" button with how many songs are actually on the
+// current page — "Add all" only ever acts on what's currently shown (see
+// app.js's currentPageIndexes), so the label says so instead of implying it
+// covers the whole filtered list across every page. No-ops while a batch is
+// running (the button is showing "Stop" — see app.js's runAddAll).
+export function setAddAllLabel(count) {
+  const btn = document.getElementById("addAllBtn");
+  if (!btn || btn.classList.contains("is-running")) return;
+  btn.textContent = `Add ${count} shown to ${btn.dataset.destination}`;
+}
+
 // Renders just the current page's slice of matchingIndexes into the song
 // list, fading the swap so paging/filtering doesn't feel like an abrupt
-// content jump. addedMatches (index -> { match, matchUrl }) lets a row
-// rendered on a page you've navigated back to still show "Added" instead of
-// reverting to a plain "Add" button. pageSize of Infinity (the "All" option)
-// shows everything — handled as its own branch since `(1 - 1) * Infinity` is NaN, not 0.
-export function renderPage(songs, matchingIndexes, page, pageSize, addedMatches) {
+// content jump. songStatuses (index -> { status, match, matchUrl }) lets a
+// row rendered on a page you've navigated back to still show its outcome
+// instead of reverting to a plain "Add" button. pageSize of Infinity (the
+// "All" option) shows everything — handled as its own branch since
+// `(1 - 1) * Infinity` is NaN, not 0.
+export function renderPage(songs, matchingIndexes, page, pageSize, songStatuses) {
   const pageIndexes = pageSize === Infinity
     ? matchingIndexes
     : matchingIndexes.slice((page - 1) * pageSize, page * pageSize);
+  // Same offset renderPaginationControls' "showing A-B" label uses, so a
+  // row's number always matches its position in that range.
+  const startOffset = pageSize === Infinity ? 0 : (page - 1) * pageSize;
 
   const list = document.getElementById("songList");
   fadeSwap(list, () => {
     list.innerHTML = pageIndexes.length > 0
-      ? pageIndexes.map((i) => buildRow(songs, i, addedMatches.get(i))).join("")
+      ? pageIndexes.map((i, k) => buildRow(songs, i, songStatuses.get(i), startOffset + k + 1)).join("")
       : `<div class="empty-state">No songs match your search.</div>`;
   });
+
+  setAddAllLabel(pageIndexes.length);
 }
 
 // Updates the "Page X of Y (showing N of M songs)" label and disables

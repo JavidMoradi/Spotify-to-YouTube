@@ -22,10 +22,13 @@
     <div class="glow glow-a"></div>
     <div class="glow glow-b"></div>
 
-    <!-- Theme toggle — always visible regardless of which screen shows -->
-    <button type="button" id="themeToggle" class="glass theme-toggle" aria-label="Toggle light/dark theme">
-      <div id="themeKnob" class="theme-knob"></div>
-    </button>
+    <!-- Floating bottom-right controls — always visible regardless of which screen shows -->
+    <div class="floating-controls">
+      <a href="mailto:javidmoradi0@gmail.com?subject=Segue%20Bug%20Report" id="reportBugBtn" class="glass bug-report-btn" aria-label="Report a bug" title="Report a bug">🐞</a>
+      <button type="button" id="themeToggle" class="glass theme-toggle" aria-label="Toggle light/dark theme">
+        <div id="themeKnob" class="theme-knob"></div>
+      </button>
+    </div>
 
     <!-- Toasts — always available regardless of which screen shows -->
     <div id="toastContainer" class="toast-container"></div>
@@ -47,7 +50,10 @@
     <div id="authSection">
       <div class="glass auth-card">
         <div class="auth-heading">
-          <img src="favicon.svg" alt="" class="app-icon app-icon-auth" />
+          <div class="brand-lockup">
+            <img src="favicon.svg" alt="" class="app-icon app-icon-brand" />
+            <span class="brand-wordmark">Segue</span>
+          </div>
           <h1>Move your music</h1>
           <p>Connect both accounts, then transfer your library in one tap.</p>
         </div>
@@ -111,7 +117,9 @@
             <option value="100" selected>100 / page</option>
             <option value="200">200 / page</option>
             <option value="all">All</option>
+            <option value="custom">Custom…</option>
           </select>
+          <input type="number" id="customPageSizeInput" class="glass pill-input" min="1" placeholder="e.g. 18" style="display:none;">
         </div>
         <div class="glass search-wrap">
           <div class="search-icon"><div class="search-icon-circle"></div><div class="search-icon-handle"></div></div>
