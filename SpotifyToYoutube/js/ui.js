@@ -1,5 +1,17 @@
 import { auth } from './state.js';
 
+// Escapes text pulled from Spotify (song/artist/playlist names) before it's
+// interpolated into HTML, so a name containing characters like `<` or `"`
+// can't break the markup or inject a stored script.
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function markConnected(service) {
   document.getElementById(`${service}Status`).textContent = "Connected";
   document.getElementById(`${service}Btn`).disabled = true;
@@ -11,26 +23,137 @@ export function checkBothConnected() {
   }
 }
 
-// Builds the Excel-like song table HTML string from the songs state object.
-export function buildSongTable(songs) {
-  let rows = "";
+// The top bar and filter bar are always shown/hidden together — both only
+// make sense once the song table is on screen.
+export function showTopBar() {
+  document.getElementById("topBar").style.display = "flex";
+  document.getElementById("filterBar").style.display = "flex";
+}
+
+export function hideTopBar() {
+  document.getElementById("topBar").style.display = "none";
+  document.getElementById("filterBar").style.display = "none";
+}
+
+// Reverts the page back to the initial "connect your accounts" screen —
+// used after logout.
+export function resetToAuthScreen() {
+  document.getElementById("mainDiv").innerHTML = "";
+  hideTopBar();
+
+  document.getElementById("searchInput").value = "";
+  document.getElementById("playlistFilter").innerHTML = `<option value="">All Playlists</option>`;
+  document.getElementById("pageSizeFilter").value = "100";
+
+  document.getElementById("spotifyStatus").textContent = "";
+  document.getElementById("youtubeStatus").textContent = "";
+  document.getElementById("spotifyBtn").disabled = false;
+  document.getElementById("youtubeBtn").disabled = false;
+
+  const initiateBtn = document.getElementById("initiateBtn");
+  initiateBtn.disabled = true;
+  initiateBtn.textContent = "Initiate";
+
+  document.getElementById("authSection").style.display = "flex";
+}
+
+// Fills the playlist filter dropdown with the distinct playlist names
+// present in the song table, keeping "All Playlists" as the default option.
+export function populatePlaylistFilter(playlists) {
+  const unique  = [...new Set(playlists)].sort((a, b) => a.localeCompare(b));
+  const options = unique
+    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+    .join("");
+
+  document.getElementById("playlistFilter").innerHTML =
+    `<option value="">All Playlists</option>${options}`;
+}
+
+// Returns the indexes into `songs` whose song/artist/album text matches the
+// search term and whose playlist matches the playlist filter (empty string
+// = all playlists). Operates directly on the data rather than the DOM, since
+// with pagination only one page's rows exist in the DOM at a time — this is
+// also what scopes "Add All" to everything matching the filter, not just
+// whatever page happens to be on screen.
+export function getMatchingIndexes(songs, searchTerm, playlistTerm) {
+  const term    = searchTerm.trim().toLowerCase();
+  const indexes = [];
+
   songs.names.forEach((name, i) => {
     const artists = songs.artists[i].map((a) => a.name).join(", ");
-    const artUrl  = songs.albumArts[i];
-    const artCell = artUrl
-      ? `<img src="${artUrl}" width="48" height="48" style="border-radius:4px; display:block;">`
-      : "";
+    const album   = songs.albums[i];
 
-    rows += `
-      <tr>
-        <td>${i + 1}</td>
-        <td class="art-cell">${artCell}</td>
-        <td>${name}</td>
-        <td>${artists}</td>
-        <td>${songs.playlists[i]}</td>
-      </tr>`;
+    const matchesSearch = !term
+      || name.toLowerCase().includes(term)
+      || artists.toLowerCase().includes(term)
+      || album.toLowerCase().includes(term);
+    const matchesPlaylist = !playlistTerm || songs.playlists[i] === playlistTerm;
+
+    if (matchesSearch && matchesPlaylist) indexes.push(i);
   });
 
+  return indexes;
+}
+
+function addButtonHtml(index) {
+  return `
+    <button type="button" class="btn btn-sm btn-outline-success add-song-btn" id="addSongBtn-${index}" data-index="${index}">
+      Add
+    </button>`;
+}
+
+function addedCellHtml(index, match) {
+  const videoUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(match.videoId)}`;
+
+  return `
+    <div class="d-flex flex-column align-items-center gap-1">
+      <button type="button" class="btn btn-sm btn-secondary" disabled>Added</button>
+      <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="small" title="${escapeHtml(match.title)}">View match</a>
+      <button type="button" class="btn btn-sm btn-link p-0 re-search-btn" data-index="${index}">Re-search</button>
+    </div>`;
+}
+
+// Marks a row as added and shows a link to the matched YouTube video plus a
+// "Re-search" control, so a wrong match (e.g. a cover version outranking the
+// original) can be spotted and corrected instead of silently trusted forever.
+// No-ops if the row isn't the one currently on screen (a different page).
+export function markSongAdded(index, match) {
+  const cell = document.getElementById(`addCell-${index}`);
+  if (!cell) return;
+  cell.innerHTML = addedCellHtml(index, match);
+}
+
+// Reverts a row back to its initial "Add" button — used after "Re-search" is
+// clicked, discarding whatever match (right or wrong) was previously found.
+export function resetSongRow(index) {
+  const cell = document.getElementById(`addCell-${index}`);
+  if (!cell) return;
+  cell.innerHTML = addButtonHtml(index);
+}
+
+function buildRow(songs, i, addedMatch) {
+  const artists  = songs.artists[i].map((a) => a.name).join(", ");
+  const playlist = songs.playlists[i];
+  const album    = songs.albums[i];
+  const artCell  = `<img src="${songs.albumArts[i]}" width="48" height="48" style="border-radius:4px; display:block;" alt="Album art" loading="lazy">`;
+  const addCell  = addedMatch ? addedCellHtml(i, addedMatch) : addButtonHtml(i);
+
+  return `
+    <tr>
+      <td>${i + 1}</td>
+      <td class="art-cell">${artCell}</td>
+      <td>${escapeHtml(songs.names[i])}</td>
+      <td>${escapeHtml(artists)}</td>
+      <td>${escapeHtml(album)}</td>
+      <td>${escapeHtml(playlist)}</td>
+      <td class="text-center" id="addCell-${i}">${addCell}</td>
+    </tr>`;
+}
+
+// Builds the static table shell (header + empty body) plus the pagination
+// controls and "Add All" button. Rendered once per Initiate; only the
+// table body and pagination label are replaced after that (see renderPage).
+export function buildTableShell() {
   return `
     <table class="excel-table">
       <thead>
@@ -39,12 +162,46 @@ export function buildSongTable(songs) {
           <th>Art</th>
           <th>Song Name</th>
           <th>Artist</th>
+          <th>Album</th>
           <th>Playlist</th>
+          <th></th>
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody id="songTableBody"></tbody>
     </table>
+    <div class="d-flex align-items-center justify-content-center gap-2" style="margin-top: 0.8rem;">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="prevPageBtn">Prev</button>
+      <span id="pageLabel" class="small"></span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="nextPageBtn">Next</button>
+    </div>
     <button type="button" class="btn btn-success" id="addToYoutubeBtn" style="margin-top: 1.2rem;">
       Add All to YouTube
     </button>`;
+}
+
+// Renders just the current page's slice of matchingIndexes into the table
+// body. addedMatches (index -> match) lets a row rendered on a page you've
+// navigated back to still show "Added" instead of reverting to a plain
+// "Add" button. pageSize of Infinity (the "All" option) shows everything —
+// handled as its own branch since `(1 - 1) * Infinity` is NaN, not 0.
+export function renderPage(songs, matchingIndexes, page, pageSize, addedMatches) {
+  const pageIndexes = pageSize === Infinity
+    ? matchingIndexes
+    : matchingIndexes.slice((page - 1) * pageSize, page * pageSize);
+
+  document.getElementById("songTableBody").innerHTML =
+    pageIndexes.map((i) => buildRow(songs, i, addedMatches.get(i))).join("");
+}
+
+// Updates the "Page X of Y (showing N of M songs)" label and disables
+// Prev/Next at the ends of the range (always disabled when showing "All").
+export function renderPaginationControls(page, totalMatches, pageSize) {
+  const totalPages = pageSize === Infinity ? 1 : Math.max(1, Math.ceil(totalMatches / pageSize));
+  const start      = totalMatches === 0 ? 0 : (pageSize === Infinity ? 1 : (page - 1) * pageSize + 1);
+  const end        = pageSize === Infinity ? totalMatches : Math.min(page * pageSize, totalMatches);
+
+  document.getElementById("pageLabel").textContent =
+    `Page ${page} of ${totalPages} (showing ${start}-${end} of ${totalMatches} songs)`;
+  document.getElementById("prevPageBtn").disabled = page <= 1;
+  document.getElementById("nextPageBtn").disabled = page >= totalPages;
 }

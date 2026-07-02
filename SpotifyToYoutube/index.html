@@ -43,6 +43,43 @@
         font-weight: bold;
       }
 
+      /* ── Top bar: shown once the song table is visible ── */
+      #topBar {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 0.75rem 1.5rem;
+        background-color: #212529;
+        color: white;
+      }
+
+      #topBar .brand {
+        font-family: 'Times New Roman', Times, serif;
+        font-weight: bold;
+      }
+
+      /* ── Filter bar: playlist dropdown (left) + search box (right) ── */
+      #filterBar {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 0.6rem 1.5rem;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        gap: 1rem;
+      }
+
+      #filterBar select,
+      #filterBar input {
+        width: auto;
+      }
+
+      #filterBar input {
+        max-width: 300px;
+      }
+
       /* ── Song table screen: centered horizontally ── */
       #mainDiv {
         display: flex;
@@ -112,6 +149,28 @@
       <button id="initiateBtn" class="btn btn-primary" disabled>
         Initiate
       </button>
+    </div>
+
+    <!-- Shown once accounts are connected and the song table is displayed -->
+    <div id="topBar">
+      <span class="brand">Spotify to Youtube</span>
+      <button id="logoutBtn" class="btn btn-outline-light btn-sm">Logout</button>
+    </div>
+
+    <!-- Playlist filter + page size (left) + song/artist search (right) — shown alongside the top bar -->
+    <div id="filterBar">
+      <div class="d-flex gap-2">
+        <select id="playlistFilter" class="form-select form-select-sm">
+          <option value="">All Playlists</option>
+        </select>
+        <select id="pageSizeFilter" class="form-select form-select-sm">
+          <option value="50">50 / page</option>
+          <option value="100" selected>100 / page</option>
+          <option value="200">200 / page</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search by song or artist...">
     </div>
 
     <!-- Step 2: Song table and "Add All" button injected here by main.js -->
