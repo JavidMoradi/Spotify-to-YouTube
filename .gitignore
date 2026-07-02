@@ -1,3 +1,6 @@
 # Contains Spotify and Google Client IDs — never commit this file.
 # Copy it from config.example.js and fill in your own credentials.
 SpotifyToYoutube/config.js
+
+# Claude Code's local, per-machine settings — not meant to be shared/committed.
+.claude/

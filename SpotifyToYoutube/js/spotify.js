@@ -164,10 +164,12 @@ export async function fetchAllTracks() {
     if (!tracks) continue;
 
     for (const item of tracks) {
-      // track can be null if the song was removed from Spotify since it was saved.
-      if (!item.track) continue;
+      // track can be null if the song was removed from Spotify since it was
+      // saved, and a missing name leaves nothing to search/display or match
+      // against on YouTube — skip both rather than showing a placeholder row.
+      if (!item.track || !item.track.name) continue;
 
-      songs.names.push(item.track.name || "Not Found");
+      songs.names.push(item.track.name);
       songs.trackIds.push(item.track.id || null);
 
       // Local files or otherwise incomplete tracks can carry an empty artist list.
