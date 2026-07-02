@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <style>
+    @keyframes floatGlow { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(2%,-3%) scale(1.05); } }
+    @keyframes popIn { from { opacity: 0; transform: scale(0.92) translateY(6px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="{{ rootStyle }}">
+
+  <!-- ambient glow blobs -->
+  <div style="{{ glowA }}"></div>
+  <div style="{{ glowB }}"></div>
+
+  <!-- ── Prototype controls (mode + screen switch) — not part of the design surface ── -->
+  <div style="position:fixed; top:20px; right:20px; z-index:50; display:flex; gap:10px; align-items:center;">
+    <div style="{{ segWrapStyle }}">
+      <div style="{{ screenIndicatorStyle }}"></div>
+      <button type="button" style="{{ screenTabStyle.auth }}" onClick="{{ goAuth }}">Auth</button>
+      <button type="button" style="{{ screenTabStyle.app }}" onClick="{{ goApp }}">Library</button>
+    </div>
+    <button type="button" style="{{ modeToggleStyle }}" onClick="{{ toggleMode }}">
+      <div style="{{ modeKnobStyle }}"></div>
+    </button>
+  </div>
+
+  <!-- ══════════════════════ AUTH SCREEN ══════════════════════ -->
+  <sc-if value="{{ isAuth }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Auth" style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px; position:relative; z-index:1;">
+      <div style="{{ authCardStyle }}">
+
+        <div style="text-align:center; margin-bottom:28px;">
+          <div style="font-size:26px; font-weight:700; letter-spacing:-0.02em; color:{{ theme.textPrimary }};">Move your music</div>
+          <div style="font-size:15px; margin-top:6px; color:{{ theme.textSecondary }};">Connect both accounts, then transfer your library in one tap.</div>
+        </div>
+
+        <!-- direction segmented control -->
+        <div style="{{ dirWrapStyle }}">
+          <div style="{{ dirIndicatorStyle }}"></div>
+          <button type="button" disabled="{{ directionLocked }}" style="{{ dirBtnStyle.spotify }}" onClick="{{ setSpotifySource }}">
+            <span style="{{ dotStyle.spotify }}"></span> Spotify
+          </button>
+          <div style="width:20px; display:flex; align-items:center; justify-content:center; color:{{ theme.textTertiary }}; font-size:14px; z-index:2;">→</div>
+          <button type="button" disabled="{{ directionLocked }}" style="{{ dirBtnStyle.youtube }}" onClick="{{ setYoutubeSource }}">
+            <span style="{{ dotStyle.youtube }}"></span> YouTube
+          </button>
+        </div>
+
+        <div style="height:28px;"></div>
+
+        <!-- connect rows -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div style="{{ connectRowStyle }}">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="{{ serviceIconStyle.spotify }}">S</div>
+              <div>
+                <div style="font-size:15px; font-weight:600; color:{{ theme.textPrimary }};">Spotify</div>
+                <div style="font-size:12.5px; color:{{ spotifyConnected ? theme.success : theme.textTertiary }};">{{ spotifyStatusLabel }}</div>
+              </div>
+            </div>
+            <button type="button" disabled="{{ spotifyConnected }}" style="{{ connectBtnStyle.spotify }}" onClick="{{ connectSpotify }}">{{ spotifyBtnLabel }}</button>
+          </div>
+
+          <div style="{{ connectRowStyle }}">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="{{ serviceIconStyle.youtube }}">Y</div>
+              <div>
+                <div style="font-size:15px; font-weight:600; color:{{ theme.textPrimary }};">YouTube</div>
+                <div style="font-size:12.5px; color:{{ youtubeConnected ? theme.success : theme.textTertiary }};">{{ youtubeStatusLabel }}</div>
+              </div>
+            </div>
+            <button type="button" disabled="{{ youtubeConnected }}" style="{{ connectBtnStyle.youtube }}" onClick="{{ connectYoutube }}">{{ youtubeBtnLabel }}</button>
+          </div>
+        </div>
+
+        <div style="height:24px;"></div>
+
+        <button type="button" disabled="{{ !bothConnected }}" style="{{ initiateBtnStyle }}" onClick="{{ initiate }}">
+          {{ initiateLabel }}
+        </button>
+
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══════════════════════ APP / LIBRARY SCREEN ══════════════════════ -->
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Song Library" style="min-height:100vh; position:relative; z-index:1; display:flex; flex-direction:column;">
+
+      <!-- top bar -->
+      <div style="{{ navBarStyle }}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="{{ navDotStyle }}"></div>
+          <span style="font-size:16px; font-weight:700; letter-spacing:-0.01em; color:{{ theme.textPrimary }};">{{ brandLabel }}</span>
+        </div>
+        <button type="button" style="{{ logoutBtnStyle }}" onClick="{{ logout }}">Log out</button>
+      </div>
+
+      <!-- filter bar -->
+      <div style="{{ filterBarStyle }}">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <select style="{{ pillSelectStyle }}" value="{{ playlistFilter }}" onChange="{{ onPlaylistChange }}">
+            <option value="">All Playlists</option>
+            <sc-for list="{{ playlists }}" as="pl" hint-placeholder-count="2">
+              <option value="{{ pl }}">{{ pl }}</option>
+            </sc-for>
+          </select>
+          <select style="{{ pillSelectStyle }}" value="{{ pageSizeLabel }}" onChange="{{ noop }}">
+            <option>50 / page</option>
+            <option>100 / page</option>
+          </select>
+        </div>
+        <div style="{{ searchWrapStyle }}">
+          <div style="{{ searchIconStyle }}"><div style="{{ searchIconCircle }}"></div><div style="{{ searchIconHandle }}"></div></div>
+          <input type="text" placeholder="Search by song or artist…" value="{{ searchTerm }}" onInput="{{ onSearchInput }}" style="{{ searchInputStyle }}" />
+        </div>
+      </div>
+
+      <!-- song list -->
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center; padding:28px 24px 60px;">
+        <div style="width:100%; max-width:880px; display:flex; flex-direction:column; gap:10px;">
+
+          <sc-for list="{{ visibleSongs }}" as="song" hint-placeholder-count="4">
+            <div style="{{ rowStyle }}">
+              <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+                <div style="{{ artStyle }}"></div>
+                <div style="min-width:0;">
+                  <div style="font-size:14.5px; font-weight:600; color:{{ theme.textPrimary }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;">{{ song.name }}</div>
+                  <div style="font-size:13px; color:{{ theme.textSecondary }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;">{{ song.artist }} · {{ song.album }}</div>
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:16px;">
+                <div style="{{ playlistTagStyle }}">{{ song.playlist }}</div>
+
+                <sc-if value="{{ song.added }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="{{ addedPillStyle }}">Added</div>
+                    <a href="#" style="{{ viewMatchStyle }}">View match</a>
+                    <button type="button" style="{{ researchBtnStyle }}" onClick="{{ makeResearch(song.id) }}">Re-search</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ !song.added }}" hint-placeholder-val="{{ true }}">
+                  <button type="button" style="{{ addBtnStyle }}" onClick="{{ makeAdd(song.id) }}">Add</button>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+
+          <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+            <div style="text-align:center; padding:40px 0; color:{{ theme.textTertiary }}; font-size:14px;">No songs match your search.</div>
+          </sc-if>
+
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; margin-top:22px;">
+          <button type="button" disabled="{{ true }}" style="{{ pageNavBtnStyle }}">Prev</button>
+          <span style="font-size:12.5px; color:{{ theme.textTertiary }};">{{ pageLabel }}</span>
+          <button type="button" disabled="{{ true }}" style="{{ pageNavBtnStyle }}">Next</button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:12px; margin-top:26px;">
+          <button type="button" style="{{ backToTopStyle }}">Back to top</button>
+          <button type="button" style="{{ addAllStyle }}" onClick="{{ addAll }}">Add all to {{ destinationLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:800},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#6366f1&quot;,&quot;options&quot;:[&quot;#6366f1&quot;,&quot;#0ea5e9&quot;,&quot;#ec4899&quot;,&quot;#10b981&quot;],&quot;tsType&quot;:&quot;string&quot;},&quot;reduceMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const SONGS = [
+  { id: 1, name: "Midnight Drive",     artist: "Nova Reign",     album: "Afterglow",      playlist: "Late Night" },
+  { id: 2, name: "Wave Runner",        artist: "Tidal Bloom",    album: "Coastline",      playlist: "Late Night" },
+  { id: 3, name: "Paper Lanterns",     artist: "Fern & Isley",   album: "Paper Lanterns", playlist: "Focus" },
+  { id: 4, name: "Glass Horizon",      artist: "Amber Isles",    album: "Glass Horizon",  playlist: "Focus" },
+  { id: 5, name: "Static Bloom",       artist: "Nova Reign",     album: "Afterglow",      playlist: "Road Trip" },
+  { id: 6, name: "Slow Static",        artist: "Halyard",        album: "Slow Static",    playlist: "Road Trip" },
+];
+
+class Component extends DCLogic {
+  state = {
+    mode: 'dark',
+    screen: 'auth',
+    direction: 'spotify',
+    spotifyConnected: false,
+    youtubeConnected: false,
+    searchTerm: '',
+    playlistFilter: '',
+    songs: SONGS.map(s => ({ ...s, added: false })),
+  };
+
+  toggleMode = () => this.setState(s => ({ mode: s.mode === 'dark' ? 'light' : 'dark' }));
+  goAuth = () => this.setState({ screen: 'auth' });
+  goApp = () => this.setState({ screen: 'app' });
+
+  setSpotifySource = () => { if (this.state.screen === 'auth' ) this.setState({ direction: 'spotify' }); };
+  setYoutubeSource = () => { if (this.state.screen === 'auth') this.setState({ direction: 'youtube' }); };
+
+  connectSpotify = () => this.setState({ spotifyConnected: true });
+  connectYoutube = () => this.setState({ youtubeConnected: true });
+
+  initiate = () => this.setState({ screen: 'app' });
+  logout = () => this.setState({
+    screen: 'auth', spotifyConnected: false, youtubeConnected: false,
+    songs: SONGS.map(s => ({ ...s, added: false })), searchTerm: '', playlistFilter: '',
+  });
+
+  onSearchInput = (e) => this.setState({ searchTerm: e.target.value });
+  onPlaylistChange = (e) => this.setState({ playlistFilter: e.target.value });
+  noop = () => {};
+
+  makeAdd = (id) => () => this.setState(s => ({
+    songs: s.songs.map(song => song.id === id ? { ...song, added: true } : song),
+  }));
+  makeResearch = (id) => () => this.setState(s => ({
+    songs: s.songs.map(song => song.id === id ? { ...song, added: false } : song),
+  }));
+  addAll = () => this.setState(s => ({ songs: s.songs.map(song => ({ ...song, added: true })) }));
+
+  renderVals() {
+    const dark = this.state.mode === 'dark';
+    const accent = this.props.accentColor ?? '#6366f1';
+    const accentSoft = dark ? 'rgba(99,102,241,0.28)' : 'rgba(99,102,241,0.14)';
+    const motion = this.props.reduceMotion ? '0.01s linear' : '0.45s cubic-bezier(0.22,1,0.36,1)';
+    const motionFast = this.props.reduceMotion ? '0.01s linear' : '0.2s ease';
+
+    const theme = dark ? {
+      textPrimary: 'rgba(255,255,255,0.94)',
+      textSecondary: 'rgba(255,255,255,0.62)',
+      textTertiary: 'rgba(255,255,255,0.4)',
+      glassBg: 'rgba(255,255,255,0.07)',
+      glassBgStrong: 'rgba(255,255,255,0.1)',
+      glassBorder: 'rgba(255,255,255,0.14)',
+      glassShadow: '0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12)',
+      navBg: 'rgba(15,16,28,0.55)',
+      inputBg: 'rgba(255,255,255,0.06)',
+      success: '#34d399',
+    } : {
+      textPrimary: 'rgba(20,20,30,0.92)',
+      textSecondary: 'rgba(20,20,30,0.58)',
+      textTertiary: 'rgba(20,20,30,0.38)',
+      glassBg: 'rgba(255,255,255,0.55)',
+      glassBgStrong: 'rgba(255,255,255,0.72)',
+      glassBorder: 'rgba(255,255,255,0.7)',
+      glassShadow: '0 20px 50px rgba(30,30,60,0.12), inset 0 1px 0 rgba(255,255,255,0.8)',
+      navBg: 'rgba(255,255,255,0.55)',
+      inputBg: 'rgba(255,255,255,0.6)',
+      success: '#059669',
+    };
+
+    const bgGrad = dark
+      ? 'radial-gradient(1200px 800px at 15% 0%, #241f4d 0%, transparent 60%), radial-gradient(1000px 700px at 100% 100%, #1a1440 0%, transparent 55%), linear-gradient(160deg, #0f1120 0%, #171233 55%, #1c1442 100%)'
+      : 'radial-gradient(1200px 800px at 15% 0%, #eef0ff 0%, transparent 60%), radial-gradient(1000px 700px at 100% 100%, #f5f0ff 0%, transparent 55%), linear-gradient(160deg, #fbfbff 0%, #f3f4fb 55%, #f0eefb 100%)';
+
+    const rootStyle = `position:relative; min-height:100vh; width:100%; overflow:hidden; background:${bgGrad}; font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif; transition: background ${motion};`;
+
+    const glow = (top, left, color) => `position:absolute; top:${top}; left:${left}; width:520px; height:520px; border-radius:50%; background:${color}; filter:blur(90px); opacity:${dark?0.35:0.5}; animation: floatGlow 14s ease-in-out infinite; pointer-events:none;`;
+
+    const glass = `background:${theme.glassBg}; backdrop-filter:blur(28px) saturate(160%); -webkit-backdrop-filter:blur(28px) saturate(160%); border:1px solid ${theme.glassBorder}; box-shadow:${theme.glassShadow};`;
+
+    const authCardStyle = `${glass} width:440px; max-width:100%; border-radius:32px; padding:40px 36px;`;
+
+    // prototype control pill
+    const segWrapStyle = `${glass} position:relative; display:flex; border-radius:999px; padding:4px; gap:2px;`;
+    const screenIndicatorStyle = `position:absolute; top:4px; bottom:4px; width:calc(50% - 4px); left:${this.state.screen==='auth'?'4px':'calc(50%)'}; background:${accent}; border-radius:999px; transition: left ${motionFast}; z-index:0;`;
+    const tabBase = `position:relative; z-index:1; border:none; background:none; padding:7px 14px; font-size:12.5px; font-weight:600; border-radius:999px; cursor:pointer; transition: color ${motionFast};`;
+    const screenTabStyle = {
+      auth: `${tabBase} color:${this.state.screen==='auth' ? '#fff' : theme.textSecondary};`,
+      app:  `${tabBase} color:${this.state.screen==='app' ? '#fff' : theme.textSecondary};`,
+    };
+    const modeToggleStyle = `${glass} width:52px; height:30px; border-radius:999px; border:1px solid ${theme.glassBorder}; padding:3px; cursor:pointer; position:relative;`;
+    const modeKnobStyle = `width:22px; height:22px; border-radius:50%; background:${dark ? '#e2e8f0' : '#1e1b4b'}; transform:translateX(${dark?'22px':'0px'}); transition: transform ${motionFast};`;
+
+    // direction segmented control (auth screen)
+    const dirWrapStyle = `position:relative; display:flex; align-items:center; justify-content:center; gap:0; background:${theme.inputBg}; border:1px solid ${theme.glassBorder}; border-radius:16px; padding:5px;`;
+    const dirIndicatorStyle = `position:absolute; top:5px; bottom:5px; left:5px; width:calc(50% - 15px); background:${accentSoft}; border:1px solid ${accent}; border-radius:12px; transform:translateX(${this.state.direction==='spotify'?'0%':'calc(100% + 20px)'}); transition: transform ${motion}; z-index:0;`;
+    const dirBtn = (col) => `position:relative; z-index:1; flex:1; display:flex; align-items:center; justify-content:center; gap:8px; border:none; background:none; padding:10px 14px; font-size:14px; font-weight:600; color:${theme.textPrimary}; border-radius:12px; cursor:pointer;`;
+    const dirBtnStyle = { spotify: dirBtn(), youtube: dirBtn() };
+    const dot = (color) => `width:8px; height:8px; border-radius:50%; background:${color}; display:inline-block;`;
+    const dotStyle = { spotify: dot('#1ED760'), youtube: dot('#FF3B30') };
+
+    const connectRowStyle = `${glass} display:flex; align-items:center; justify-content:space-between; border-radius:18px; padding:14px 16px;`;
+    const serviceIcon = (color) => `width:38px; height:38px; border-radius:12px; background:${color}; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:15px; box-shadow: 0 6px 16px ${color}55;`;
+    const serviceIconStyle = { spotify: serviceIcon('#1ED760'), youtube: serviceIcon('#FF3B30') };
+
+    const connectBtn = (color, connected) => `border:none; padding:8px 16px; border-radius:999px; font-size:13px; font-weight:600; cursor:${connected?'default':'pointer'}; transition: transform ${motionFast}, opacity ${motionFast}; background:${connected ? theme.glassBgStrong : color}; color:${connected ? theme.textTertiary : '#fff'}; opacity:${connected?0.7:1};`;
+    const connectBtnStyle = {
+      spotify: connectBtn('#1ED760', this.state.spotifyConnected),
+      youtube: connectBtn('#FF3B30', this.state.youtubeConnected),
+    };
+
+    const bothConnected = this.state.spotifyConnected && this.state.youtubeConnected;
+    const initiateBtnStyle = `width:100%; border:none; padding:15px; border-radius:16px; font-size:15px; font-weight:700; letter-spacing:-0.01em; cursor:${bothConnected?'pointer':'default'}; color:${bothConnected ? '#fff' : theme.textSecondary}; background:${bothConnected ? `linear-gradient(135deg, ${accent}, #8b5cf6)` : theme.glassBgStrong}; box-shadow:${bothConnected ? `0 12px 30px ${accentSoft}` : 'none'}; opacity:${bothConnected?1:0.85}; transition: all ${motionFast};`;
+
+    // app screen
+    const navBarStyle = `${glass} background:${theme.navBg}; display:flex; align-items:center; justify-content:space-between; padding:16px 28px; position:sticky; top:0; z-index:10; border-radius:0;`;
+    const navDotStyle = `width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg, ${accent}, #ec4899);`;
+    const logoutBtnStyle = `border:1px solid ${theme.glassBorder}; background:${theme.glassBg}; color:${theme.textPrimary}; padding:8px 16px; border-radius:999px; font-size:12.5px; font-weight:600; cursor:pointer;`;
+
+    const filterBarStyle = `display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 28px; border-bottom:1px solid ${theme.glassBorder};`;
+    const pillSelectStyle = `${glass} border-radius:999px; padding:8px 14px; font-size:12.5px; color:${theme.textPrimary}; cursor:pointer;`;
+    const searchWrapStyle = `${glass} display:flex; align-items:center; gap:8px; border-radius:999px; padding:8px 16px; width:280px; max-width:100%;`;
+    const searchIconStyle = `position:relative; width:14px; height:14px;`;
+    const searchIconCircle = `position:absolute; top:0; left:0; width:9px; height:9px; border-radius:50%; border:1.5px solid ${theme.textTertiary};`;
+    const searchIconHandle = `position:absolute; bottom:0; right:0; width:6px; height:1.5px; background:${theme.textTertiary}; transform:rotate(45deg); transform-origin:right;`;
+    const searchInputStyle = `border:none; background:none; outline:none; font-size:13px; color:${theme.textPrimary}; flex:1;`;
+
+    const rowStyle = `${glass} display:flex; align-items:center; justify-content:space-between; border-radius:18px; padding:12px 18px; transition: transform ${motionFast}, background ${motionFast};`;
+    const artStyle = `width:46px; height:46px; border-radius:12px; flex-shrink:0; background:repeating-linear-gradient(45deg, ${dark?'rgba(255,255,255,0.12)':'rgba(30,20,60,0.08)'} 0 6px, transparent 6px 12px), linear-gradient(135deg, ${accentSoft}, transparent);`;
+    const playlistTagStyle = `font-size:11.5px; font-weight:600; color:${theme.textSecondary}; background:${theme.inputBg}; border:1px solid ${theme.glassBorder}; padding:4px 10px; border-radius:999px; white-space:nowrap;`;
+
+    const addBtnStyle = `border:1px solid ${accent}; background:${accentSoft}; color:${dark?'#c7d2fe':accent}; padding:7px 16px; border-radius:999px; font-size:12.5px; font-weight:600; cursor:pointer; transition: transform ${motionFast};`;
+    const addedPillStyle = `font-size:12px; font-weight:600; color:${theme.success}; background:${dark?'rgba(52,211,153,0.15)':'rgba(5,150,105,0.1)'}; padding:6px 14px; border-radius:999px;`;
+    const viewMatchStyle = `font-size:12px; color:${accent}; text-decoration:none; font-weight:600;`;
+    const researchBtnStyle = `border:none; background:none; font-size:12px; color:${theme.textTertiary}; text-decoration:underline; cursor:pointer; padding:0;`;
+
+    const pageNavBtnStyle = `border:1px solid ${theme.glassBorder}; background:${theme.glassBg}; color:${theme.textTertiary}; padding:8px 16px; border-radius:999px; font-size:12.5px; font-weight:600; cursor:default; opacity:0.6;`;
+    const backToTopStyle = `border:1px solid ${theme.glassBorder}; background:${theme.glassBg}; color:${theme.textPrimary}; padding:12px 22px; border-radius:999px; font-size:13.5px; font-weight:600; cursor:pointer;`;
+    const addAllStyle = `border:none; background:linear-gradient(135deg, ${accent}, #8b5cf6); color:#fff; padding:12px 26px; border-radius:999px; font-size:13.5px; font-weight:700; cursor:pointer; box-shadow:0 12px 30px ${accentSoft};`;
+
+    const term = this.state.searchTerm.trim().toLowerCase();
+    const visibleSongs = this.state.songs.filter(s =>
+      (!term || s.name.toLowerCase().includes(term) || s.artist.toLowerCase().includes(term)) &&
+      (!this.state.playlistFilter || s.playlist === this.state.playlistFilter)
+    );
+    const playlists = [...new Set(SONGS.map(s => s.playlist))];
+
+    return {
+      theme, rootStyle,
+      glowA: glow('-10%', '-5%', dark ? '#4338ca' : '#c7d2fe'),
+      glowB: glow('60%', '70%', dark ? '#7c3aed' : '#fbcfe8'),
+      isAuth: this.state.screen === 'auth',
+      isApp: this.state.screen === 'app',
+      segWrapStyle, screenIndicatorStyle, screenTabStyle,
+      modeToggleStyle, modeKnobStyle,
+      toggleMode: this.toggleMode, goAuth: this.goAuth, goApp: this.goApp,
+      authCardStyle,
+      dirWrapStyle, dirIndicatorStyle, dirBtnStyle, dotStyle,
+      directionLocked: this.state.screen !== 'auth',
+      setSpotifySource: this.setSpotifySource, setYoutubeSource: this.setYoutubeSource,
+      connectRowStyle, serviceIconStyle, connectBtnStyle,
+      spotifyConnected: this.state.spotifyConnected, youtubeConnected: this.state.youtubeConnected,
+      spotifyStatusLabel: this.state.spotifyConnected ? 'Connected' : 'Not connected',
+      youtubeStatusLabel: this.state.youtubeConnected ? 'Connected' : 'Not connected',
+      spotifyBtnLabel: this.state.spotifyConnected ? 'Connected' : 'Connect',
+      youtubeBtnLabel: this.state.youtubeConnected ? 'Connected' : 'Connect',
+      connectSpotify: this.connectSpotify, connectYoutube: this.connectYoutube,
+      bothConnected, initiateBtnStyle, initiate: this.initiate,
+      initiateLabel: bothConnected ? 'Initiate transfer' : 'Connect both accounts to continue',
+      navBarStyle, navDotStyle, logoutBtnStyle, logout: this.logout,
+      brandLabel: `${this.state.direction === 'spotify' ? 'Spotify' : 'YouTube'} → ${this.state.direction === 'spotify' ? 'YouTube' : 'Spotify'}`,
+      destinationLabel: this.state.direction === 'spotify' ? 'YouTube' : 'Spotify',
+      filterBarStyle, pillSelectStyle, searchWrapStyle, searchIconStyle, searchIconCircle, searchIconHandle, searchInputStyle,
+      playlists, playlistFilter: this.state.playlistFilter, onPlaylistChange: this.onPlaylistChange,
+      pageSizeLabel: '100 / page', noop: this.noop,
+      searchTerm: this.state.searchTerm, onSearchInput: this.onSearchInput,
+      visibleSongs, noResults: visibleSongs.length === 0,
+      rowStyle, artStyle, playlistTagStyle,
+      addBtnStyle, addedPillStyle, viewMatchStyle, researchBtnStyle,
+      makeAdd: this.makeAdd, makeResearch: this.makeResearch,
+      pageNavBtnStyle, pageLabel: `Page 1 of 1 (showing ${visibleSongs.length} of ${SONGS.length} songs)`,
+      backToTopStyle, addAllStyle, addAll: this.addAll,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

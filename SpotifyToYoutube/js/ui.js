@@ -12,14 +12,41 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+// ─── Theme ──────────────────────────────────────────────────────────────────
+// Default (no class on <html>) is the dark theme; html.light overrides every
+// design token in index.html's <style> block for the light theme.
+
+const THEME_STORAGE_KEY = "s2y_theme";
+
+function applyTheme(theme) {
+  document.documentElement.classList.toggle("light", theme === "light");
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+}
+
+// Restores the persisted theme (defaulting to dark) — call once on load.
+export function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(saved === "light" ? "light" : "dark");
+}
+
+// Flips between light and dark — called by the theme toggle switch.
+export function toggleTheme() {
+  applyTheme(document.documentElement.classList.contains("light") ? "dark" : "light");
+}
+
+// ─── Connect / Initiate ─────────────────────────────────────────────────────
+
 export function markConnected(service) {
-  document.getElementById(`${service}Status`).textContent = "Connected";
-  document.getElementById(`${service}Btn`).disabled = true;
+  const btn = document.getElementById(`${service}Btn`);
+  btn.textContent = "Connected";
+  btn.disabled = true;
 }
 
 export function checkBothConnected() {
   if (auth.spotifyAccessToken && auth.youtubeAccessToken) {
-    document.getElementById("initiateBtn").disabled = false;
+    const btn = document.getElementById("initiateBtn");
+    btn.disabled = false;
+    btn.textContent = "Initiate transfer";
   }
 }
 
@@ -31,7 +58,7 @@ const CONTENT_FADE_MS = 200;
 
 // Fades `el` out (via the CSS `fade-hidden` class), waits for the CSS
 // transition to finish, then hands control to `swap` to change the DOM —
-// used for anything replaced abruptly (screens, table body, a song's add
+// used for anything replaced abruptly (screens, song list, a song's add
 // cell) so the change reads as a transition rather than a jump cut.
 function fadeSwap(el, swap, fadeMs = CONTENT_FADE_MS) {
   el.classList.add("fade-hidden");
@@ -46,7 +73,7 @@ function fadeSwap(el, swap, fadeMs = CONTENT_FADE_MS) {
 // Crossfades from one full-screen section to another (auth screen <->
 // app screen): fades `from` out, swaps which one is actually laid out via
 // `display`, then fades `to` in. `onHidden` (optional) runs right after
-// `from` is set to display:none — for cleanup (e.g. clearing the table)
+// `from` is set to display:none — for cleanup (e.g. clearing the song list)
 // that would otherwise visibly jump if done before the fade-out finishes.
 function crossfadeScreens(from, to, toDisplay, onHidden) {
   fadeSwap(from, () => {
@@ -57,7 +84,7 @@ function crossfadeScreens(from, to, toDisplay, onHidden) {
 }
 
 // Crossfades from the auth screen to the app screen (top bar + filters +
-// song table) once Initiate has finished loading the library. brandText
+// song list) once Initiate has finished loading the library. brandText
 // reflects the direction locked in at Initiate time, e.g. "Spotify → Youtube".
 export function showAppScreen(brandText) {
   document.getElementById("brandText").textContent = brandText;
@@ -66,7 +93,8 @@ export function showAppScreen(brandText) {
 
 // Disables the Spotify/Youtube source-direction toggle once Initiate has
 // been clicked — the direction is locked in for the rest of the session,
-// the same way the connect buttons lock once connected.
+// the same way the connect buttons lock once connected. The sliding
+// indicator stays right where it was, showing the locked-in selection.
 export function lockDirectionToggle() {
   document.getElementById("sourceSpotifyBtn").disabled = true;
   document.getElementById("sourceYoutubeBtn").disabled = true;
@@ -81,19 +109,23 @@ export function resetToAuthScreen() {
   document.getElementById("playlistFilter").innerHTML = `<option value="">All Playlists</option>`;
   document.getElementById("pageSizeFilter").value = "100";
 
-  document.getElementById("spotifyStatus").textContent = "";
-  document.getElementById("youtubeStatus").textContent = "";
-  document.getElementById("spotifyBtn").disabled = false;
-  document.getElementById("youtubeBtn").disabled = false;
+  const spotifyBtn = document.getElementById("spotifyBtn");
+  spotifyBtn.textContent = "Connect";
+  spotifyBtn.disabled = false;
+
+  const youtubeBtn = document.getElementById("youtubeBtn");
+  youtubeBtn.textContent = "Connect";
+  youtubeBtn.disabled = false;
 
   const initiateBtn = document.getElementById("initiateBtn");
   initiateBtn.disabled = true;
-  initiateBtn.textContent = "Initiate";
+  initiateBtn.textContent = "Connect both accounts to continue";
+  initiateBtn.removeAttribute("aria-busy");
 
   setSourceDirection("spotify");
 
-  // Clear the table only once the app screen has actually faded out and
-  // gone display:none — clearing it immediately would make the table vanish
+  // Clear the song list only once the app screen has actually faded out and
+  // gone display:none — clearing it immediately would make it vanish
   // instantly while the rest of the screen was still visibly fading around it.
   crossfadeScreens(
     document.getElementById("appScreen"),
@@ -103,16 +135,15 @@ export function resetToAuthScreen() {
   );
 }
 
-// Selects which source-direction button is visually active and re-enables
-// both (used on load and after logout — the opposite of lockDirectionToggle).
+// Slides the direction indicator behind whichever source is selected, flips
+// the arrow between them to keep pointing source -> destination, and
+// re-enables both buttons (used on load and after logout — the opposite of
+// lockDirectionToggle).
 export function setSourceDirection(source) {
-  const spotifyBtn = document.getElementById("sourceSpotifyBtn");
-  const youtubeBtn = document.getElementById("sourceYoutubeBtn");
-
-  spotifyBtn.disabled = false;
-  youtubeBtn.disabled = false;
-  spotifyBtn.classList.toggle("active", source === "spotify");
-  youtubeBtn.classList.toggle("active", source === "youtube");
+  document.getElementById("sourceSpotifyBtn").disabled = false;
+  document.getElementById("sourceYoutubeBtn").disabled = false;
+  document.getElementById("directionIndicator").classList.toggle("is-youtube", source === "youtube");
+  document.getElementById("directionArrow").classList.toggle("is-youtube", source === "youtube");
 }
 
 // Fills the playlist filter dropdown with the distinct playlist names
@@ -154,20 +185,17 @@ export function getMatchingIndexes(songs, searchTerm, playlistTerm) {
 }
 
 function addButtonHtml(index) {
-  return `
-    <button type="button" class="btn btn-sm btn-outline-success add-song-btn" id="addSongBtn-${index}" data-index="${index}">
-      Add
-    </button>`;
+  return `<button type="button" class="add-btn add-song-btn" id="addSongBtn-${index}" data-index="${index}">Add</button>`;
 }
 
 // matchUrl is precomputed by app.js (it knows whether the destination is
 // YouTube or Spotify) — ui.js stays destination-agnostic.
 function addedCellHtml(index, match, matchUrl) {
   return `
-    <div class="d-flex flex-column align-items-center gap-1">
-      <button type="button" class="btn btn-sm btn-secondary" disabled>Added</button>
-      <a href="${matchUrl}" target="_blank" rel="noopener noreferrer" class="small" title="${escapeHtml(match.title)}">View match</a>
-      <button type="button" class="btn btn-sm btn-link p-0 re-search-btn" data-index="${index}">Re-search</button>
+    <div class="added-actions">
+      <div class="added-pill">Added</div>
+      <a href="${matchUrl}" target="_blank" rel="noopener noreferrer" class="view-match-link" title="${escapeHtml(match.title)}">View match</a>
+      <button type="button" class="research-btn re-search-btn" data-index="${index}">Re-search</button>
     </div>`;
 }
 
@@ -195,56 +223,50 @@ function buildRow(songs, i, addedEntry) {
   const artists  = songs.artists[i].map((a) => a.name).join(", ");
   const playlist = songs.playlists[i];
   const album    = songs.albums[i];
-  const artCell  = `<img src="${songs.albumArts[i]}" width="48" height="48" style="border-radius:4px; display:block;" alt="Album art" loading="lazy">`;
+  const name     = songs.names[i];
+  const metaText = `${artists} · ${album}`;
   const addCell  = addedEntry ? addedCellHtml(i, addedEntry.match, addedEntry.matchUrl) : addButtonHtml(i);
 
   return `
-    <tr>
-      <td>${i + 1}</td>
-      <td class="art-cell">${artCell}</td>
-      <td>${escapeHtml(songs.names[i])}</td>
-      <td>${escapeHtml(artists)}</td>
-      <td>${escapeHtml(album)}</td>
-      <td>${escapeHtml(playlist)}</td>
-      <td class="text-center" id="addCell-${i}">${addCell}</td>
-    </tr>`;
+    <div class="glass song-row">
+      <div class="song-row-left">
+        <img class="song-art" width="46" height="46" src="${songs.albumArts[i]}" alt="Album art" loading="lazy">
+        <div class="song-info">
+          <div class="song-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+          <div class="song-meta" title="${escapeHtml(metaText)}">${escapeHtml(metaText)}</div>
+        </div>
+      </div>
+      <div class="song-row-right">
+        <div class="playlist-tag">${escapeHtml(playlist)}</div>
+        <div id="addCell-${i}">${addCell}</div>
+      </div>
+    </div>`;
 }
 
-// Builds the static table shell (header + empty body) plus the pagination
-// controls and "Add All" button. Rendered once per Initiate; only the
-// table body and pagination label are replaced after that (see renderPage).
-// destinationName labels the "Add All" button, e.g. "Add All to Youtube".
-export function buildTableShell(destinationName) {
+// Builds the static library shell (empty song list + pagination controls +
+// footer actions). Rendered once per Initiate; only the song list and
+// pagination label are replaced after that (see renderPage).
+// destinationName labels the "Add all" button, e.g. "Add all to Youtube".
+export function buildLibraryShell(destinationName) {
   return `
-    <table class="excel-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Art</th>
-          <th>Song Name</th>
-          <th>Artist</th>
-          <th>Album</th>
-          <th>Playlist</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="songTableBody"></tbody>
-    </table>
-    <div class="d-flex align-items-center justify-content-center gap-2" style="margin-top: 0.8rem;">
-      <button type="button" class="btn btn-sm btn-outline-secondary" id="prevPageBtn">Prev</button>
-      <span id="pageLabel" class="small"></span>
-      <button type="button" class="btn btn-sm btn-outline-secondary" id="nextPageBtn">Next</button>
+    <div id="songList" class="song-list"></div>
+
+    <div class="page-nav">
+      <button type="button" class="page-nav-btn" id="prevPageBtn">Prev</button>
+      <span id="pageLabel" class="page-label"></span>
+      <button type="button" class="page-nav-btn" id="nextPageBtn">Next</button>
     </div>
-    <div class="d-flex align-items-center gap-2" style="margin-top: 1.2rem;">
-      <button type="button" class="btn btn-outline-secondary" id="backToTopBtn">Back to Top</button>
-      <button type="button" class="btn btn-success" id="addAllBtn">
-        Add All to ${escapeHtml(destinationName)}
+
+    <div class="footer-actions">
+      <button type="button" class="back-to-top-btn" id="backToTopBtn">Back to top</button>
+      <button type="button" class="add-all-btn" id="addAllBtn">
+        Add all to ${escapeHtml(destinationName)}
       </button>
     </div>`;
 }
 
-// Renders just the current page's slice of matchingIndexes into the table
-// body, fading the swap so paging/filtering doesn't feel like an abrupt
+// Renders just the current page's slice of matchingIndexes into the song
+// list, fading the swap so paging/filtering doesn't feel like an abrupt
 // content jump. addedMatches (index -> { match, matchUrl }) lets a row
 // rendered on a page you've navigated back to still show "Added" instead of
 // reverting to a plain "Add" button. pageSize of Infinity (the "All" option)
@@ -254,9 +276,11 @@ export function renderPage(songs, matchingIndexes, page, pageSize, addedMatches)
     ? matchingIndexes
     : matchingIndexes.slice((page - 1) * pageSize, page * pageSize);
 
-  const tbody = document.getElementById("songTableBody");
-  fadeSwap(tbody, () => {
-    tbody.innerHTML = pageIndexes.map((i) => buildRow(songs, i, addedMatches.get(i))).join("");
+  const list = document.getElementById("songList");
+  fadeSwap(list, () => {
+    list.innerHTML = pageIndexes.length > 0
+      ? pageIndexes.map((i) => buildRow(songs, i, addedMatches.get(i))).join("")
+      : `<div class="empty-state">No songs match your search.</div>`;
   });
 }
 

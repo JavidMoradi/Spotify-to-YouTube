@@ -8,8 +8,12 @@ import {
 import {
   markConnected, checkBothConnected, showAppScreen, resetToAuthScreen,
   resetSongRow, populatePlaylistFilter, setSourceDirection, lockDirectionToggle,
-  getMatchingIndexes, buildTableShell, renderPage, renderPaginationControls,
+  getMatchingIndexes, buildLibraryShell, renderPage, renderPaginationControls,
+  initTheme, toggleTheme,
 } from './ui.js';
+
+initTheme();
+document.getElementById("themeToggle").addEventListener("click", toggleTheme);
 
 let matchingIndexes = []; // song indexes matching the current search/playlist filter
 let currentPage     = 1;
@@ -58,7 +62,8 @@ const state  = params.get("state");
 
 async function initiate() {
   const btn = document.getElementById("initiateBtn");
-  btn.textContent = "Loading...";
+  btn.innerHTML   = '<span class="spinner" aria-hidden="true"></span>';
+  btn.setAttribute("aria-busy", "true");
   btn.disabled    = true;
   lockDirectionToggle();
 
@@ -71,7 +76,7 @@ async function initiate() {
     return;
   }
 
-  document.getElementById("mainDiv").innerHTML = buildTableShell(currentDestinationLabel());
+  document.getElementById("mainDiv").innerHTML = buildLibraryShell(currentDestinationLabel());
   populatePlaylistFilter(songs.playlists);
 
   matchingIndexes = songs.names.map((_, i) => i);
