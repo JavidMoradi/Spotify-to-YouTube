@@ -1,9 +1,29 @@
-import { SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI } from '../config.js';
-import { auth, songs, persistAuth } from './state.js';
+// Low-level Spotify layer shared by spotifySource.js (reading, when Spotify
+// is the transfer source) and spotifyDestination.js (writing, when Spotify
+// is the transfer destination): PKCE auth, retrying fetch, and error typing.
 
-// Fallback shown for tracks missing an album cover — sized to match the
-// smallest Spotify art (64px) since that's what's used for thumbnails.
-const PLACEHOLDER_ALBUM_ART = "https://placehold.co/64x64?text=No+Image";
+import { SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI } from '../config.js';
+import { auth, persistAuth } from './state.js';
+
+// ─── Errors ───────────────────────────────────────────────────────────────────
+
+// Thrown when the stored Spotify access token has been rejected — callers
+// should prompt the user to reconnect rather than continuing. Spotify has no
+// hard daily quota (just a short rolling rate limit already handled by
+// fetchWithRetry below), so there's no Spotify equivalent of YouTubeQuotaError.
+export class SpotifyAuthError extends Error {}
+
+// Inspects a parsed Spotify API response for an error payload and throws a
+// typed error so callers can react appropriately instead of treating an API
+// failure the same as a legitimate empty result.
+export function throwIfApiError(data, res) {
+  if (!data.error) return;
+
+  if (res.status === 401) {
+    throw new SpotifyAuthError(data.error.message || "Spotify authorization expired.");
+  }
+  throw new Error(data.error.message || "Spotify API request failed.");
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -11,15 +31,23 @@ function sleep(ms) {
 
 // Spotify has no fixed daily quota — instead it enforces a short rolling
 // rate limit and responds with 429 plus a `Retry-After` header (seconds)
-// when it's exceeded. Retries such responses, and bare network failures,
-// with backoff before giving up, so a brief dip doesn't fail the whole sync.
-async function fetchWithRetry(url, options, maxRetries = 3) {
+// when it's exceeded. Retrying a 429 is always safe — the request was
+// rejected before Spotify did anything with it.
+//
+// A bare network exception (fetch() throwing) is a different story: it's
+// ambiguous whether the request ever reached the server, or reached it and
+// succeeded but the *response* got lost (dropped connection, timeout).
+// Retrying is safe for idempotent reads (GET) but not for a write like
+// "add this track" — resubmitting a POST that already succeeded appends the
+// same track a second time, since Spotify doesn't dedupe on its own. Callers
+// making a non-idempotent write should pass `retryOnNetworkError: false`.
+export async function fetchWithRetry(url, options, { maxRetries = 3, retryOnNetworkError = true } = {}) {
   for (let attempt = 0; ; attempt++) {
     let res;
     try {
       res = await fetch(url, options);
     } catch (err) {
-      if (attempt >= maxRetries) throw err;
+      if (!retryOnNetworkError || attempt >= maxRetries) throw err;
       await sleep(1000 * 2 ** attempt);
       continue;
     }
@@ -32,6 +60,26 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
 
     return res;
   }
+}
+
+// Spotify's list endpoints (playlists, playlist tracks) cap out at 50–100
+// items per page and return a `next` URL when more pages remain. Follows it
+// until exhausted so libraries larger than one page aren't silently truncated.
+// Returns null (instead of throwing) if a page comes back without `items`,
+// e.g. an expired token.
+export async function fetchAllPages(url) {
+  let items = [];
+  let next  = url;
+
+  while (next) {
+    const res  = await fetchWithRetry(next, { headers: { Authorization: `Bearer ${auth.spotifyAccessToken}` } });
+    const data = await res.json();
+    if (!data.items) return null;
+    items = items.concat(data.items);
+    next  = data.next;
+  }
+
+  return items;
 }
 
 // ─── PKCE Helpers ─────────────────────────────────────────────────────────────
@@ -68,7 +116,10 @@ export async function connectSpotify() {
     client_id:             SPOTIFY_CLIENT_ID,
     response_type:         "code",
     redirect_uri:          SPOTIFY_REDIRECT_URI,
-    scope:                 "user-read-private playlist-read-private playlist-read-collaborative",
+    // modify-private/public are needed when Spotify is the transfer destination
+    // (creating playlists and adding tracks), not just when it's the source.
+    scope:                 "user-read-private playlist-read-private playlist-read-collaborative " +
+                            "playlist-modify-private playlist-modify-public",
     code_challenge_method: "S256",
     code_challenge:        challenge,
     state:                 "spotify",
@@ -123,71 +174,4 @@ export async function fetchSpotifyProfile() {
   const profile = await res.json();
   auth.spotifyUserID = profile.id;
   persistAuth();
-}
-
-// ─── Data Fetching ────────────────────────────────────────────────────────────
-
-// Spotify's list endpoints (playlists, playlist tracks) cap out at 50–100
-// items per page and return a `next` URL when more pages remain. Follows it
-// until exhausted so libraries larger than one page aren't silently truncated.
-// Returns null (instead of throwing) if a page comes back without `items`,
-// e.g. an expired token.
-async function fetchAllPages(url) {
-  let items = [];
-  let next  = url;
-
-  while (next) {
-    const res  = await fetchWithRetry(next, { headers: { Authorization: `Bearer ${auth.spotifyAccessToken}` } });
-    const data = await res.json();
-    if (!data.items) return null;
-    items = items.concat(data.items);
-    next  = data.next;
-  }
-
-  return items;
-}
-
-// Loads all playlists and their tracks into the songs state object.
-// Returns false if the API call fails (e.g. expired token).
-export async function fetchAllTracks() {
-  const playlists = await fetchAllPages(
-    `https://api.spotify.com/v1/users/${auth.spotifyUserID}/playlists?limit=50`
-  );
-
-  if (!playlists) {
-    alert("Failed to load Spotify playlists. Your token may have expired — please reconnect.");
-    return false;
-  }
-
-  for (const playlist of playlists) {
-    const tracks = await fetchAllPages(`${playlist.tracks.href}?limit=100`);
-    if (!tracks) continue;
-
-    for (const item of tracks) {
-      // track can be null if the song was removed from Spotify since it was
-      // saved, and a missing name leaves nothing to search/display or match
-      // against on YouTube — skip both rather than showing a placeholder row.
-      if (!item.track || !item.track.name) continue;
-
-      songs.names.push(item.track.name);
-      songs.trackIds.push(item.track.id || null);
-
-      // Local files or otherwise incomplete tracks can carry an empty artist list.
-      const artists = item.track.artists && item.track.artists.length > 0
-        ? item.track.artists
-        : [{ name: "Unknown Artist" }];
-      songs.artists.push(artists);
-
-      songs.playlists.push(playlist.name || "Not Found");
-      songs.albums.push(item.track.album?.name || "Not Found");
-
-      // Spotify provides images at 640, 300, and 64 px — use the smallest for thumbnails.
-      const images = item.track.album?.images;
-      songs.albumArts.push(
-        images && images.length > 0 ? images[images.length - 1].url : PLACEHOLDER_ALBUM_ART
-      );
-    }
-  }
-
-  return true;
 }

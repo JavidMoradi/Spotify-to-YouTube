@@ -1,5 +1,10 @@
 // Shared mutable state — imported directly by whichever module needs it.
 
+// Fallback shown for songs missing cover art (a Spotify track with no album
+// image, or a YouTube video with no retrievable thumbnail) — sized to match
+// the smallest images either service provides.
+export const PLACEHOLDER_ALBUM_ART = "https://placehold.co/64x64?text=No+Image";
+
 export const auth = {
   spotifyAccessToken: null,
   spotifyUserID: null,
@@ -14,7 +19,7 @@ export const songs = {
   playlists: [],    // Spotify playlist name each song belongs to
   albums: [],       // album name each song belongs to
   albumArts: [],
-  trackIds: [],     // Spotify track id — key used for the video match cache below
+  trackIds: [],     // source service's unique id for the song (Spotify track id, or YouTube video id) — key used for the match cache below
 };
 
 // ─── Auth Persistence ───────────────────────────────────────────────────────
@@ -68,12 +73,13 @@ export function clearPersistedAuth() {
   auth.youtubeTokenExpiry = null;
 }
 
-// ─── Video Match Cache ───────────────────────────────────────────────────────
-// Once a Spotify track has been resolved to a YouTube video, the match
-// (videoId, kind, title) is cached here by Spotify track id so a later
-// "Add All" doesn't re-spend a search call (100 quota units) re-finding a
-// video it already knows about. This is a song↔video fact, not account-
-// specific state, so — unlike auth — it deliberately survives logout.
+// ─── Match Cache ──────────────────────────────────────────────────────────────
+// Once a song has been resolved to a match on the destination service, the
+// match is cached here by a cache key built from the source id (see
+// getOrSearchMatch in app.js) so a later "Add All" doesn't re-spend a search
+// call re-finding something it already knows about. This is a song-to-match
+// fact, not account-specific state, so — unlike auth — it deliberately
+// survives logout, and works the same regardless of transfer direction.
 const MATCH_CACHE_KEY = "s2y_video_matches";
 
 let matchCache = loadMatchCacheFromStorage();

@@ -23,23 +23,59 @@ export function checkBothConnected() {
   }
 }
 
-// The top bar and filter bar are always shown/hidden together — both only
-// make sense once the song table is on screen.
-export function showTopBar() {
-  document.getElementById("topBar").style.display = "flex";
-  document.getElementById("filterBar").style.display = "flex";
+// How long the screen crossfade / content-fade transitions take, in ms —
+// kept in one place since JS has to wait this long before swapping content,
+// matching the CSS `transition` durations declared in index.html.
+const SCREEN_FADE_MS  = 250;
+const CONTENT_FADE_MS = 200;
+
+// Fades `el` out (via the CSS `fade-hidden` class), waits for the CSS
+// transition to finish, then hands control to `swap` to change the DOM —
+// used for anything replaced abruptly (screens, table body, a song's add
+// cell) so the change reads as a transition rather than a jump cut.
+function fadeSwap(el, swap, fadeMs = CONTENT_FADE_MS) {
+  el.classList.add("fade-hidden");
+  window.setTimeout(() => {
+    swap();
+    // Force the browser to register the "hidden" state before removing it
+    // on the next frame, so fading back in actually animates.
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("fade-hidden")));
+  }, fadeMs);
 }
 
-export function hideTopBar() {
-  document.getElementById("topBar").style.display = "none";
-  document.getElementById("filterBar").style.display = "none";
+// Crossfades from one full-screen section to another (auth screen <->
+// app screen): fades `from` out, swaps which one is actually laid out via
+// `display`, then fades `to` in. `onHidden` (optional) runs right after
+// `from` is set to display:none — for cleanup (e.g. clearing the table)
+// that would otherwise visibly jump if done before the fade-out finishes.
+function crossfadeScreens(from, to, toDisplay, onHidden) {
+  fadeSwap(from, () => {
+    from.style.display = "none";
+    if (onHidden) onHidden();
+    to.style.display = toDisplay;
+  }, SCREEN_FADE_MS);
+}
+
+// Crossfades from the auth screen to the app screen (top bar + filters +
+// song table) once Initiate has finished loading the library. brandText
+// reflects the direction locked in at Initiate time, e.g. "Spotify → Youtube".
+export function showAppScreen(brandText) {
+  document.getElementById("brandText").textContent = brandText;
+  crossfadeScreens(document.getElementById("authSection"), document.getElementById("appScreen"), "flex");
+}
+
+// Disables the Spotify/Youtube source-direction toggle once Initiate has
+// been clicked — the direction is locked in for the rest of the session,
+// the same way the connect buttons lock once connected.
+export function lockDirectionToggle() {
+  document.getElementById("sourceSpotifyBtn").disabled = true;
+  document.getElementById("sourceYoutubeBtn").disabled = true;
 }
 
 // Reverts the page back to the initial "connect your accounts" screen —
 // used after logout.
 export function resetToAuthScreen() {
-  document.getElementById("mainDiv").innerHTML = "";
-  hideTopBar();
+  document.getElementById("brandText").textContent = "Spotify to Youtube";
 
   document.getElementById("searchInput").value = "";
   document.getElementById("playlistFilter").innerHTML = `<option value="">All Playlists</option>`;
@@ -54,7 +90,29 @@ export function resetToAuthScreen() {
   initiateBtn.disabled = true;
   initiateBtn.textContent = "Initiate";
 
-  document.getElementById("authSection").style.display = "flex";
+  setSourceDirection("spotify");
+
+  // Clear the table only once the app screen has actually faded out and
+  // gone display:none — clearing it immediately would make the table vanish
+  // instantly while the rest of the screen was still visibly fading around it.
+  crossfadeScreens(
+    document.getElementById("appScreen"),
+    document.getElementById("authSection"),
+    "flex",
+    () => { document.getElementById("mainDiv").innerHTML = ""; }
+  );
+}
+
+// Selects which source-direction button is visually active and re-enables
+// both (used on load and after logout — the opposite of lockDirectionToggle).
+export function setSourceDirection(source) {
+  const spotifyBtn = document.getElementById("sourceSpotifyBtn");
+  const youtubeBtn = document.getElementById("sourceYoutubeBtn");
+
+  spotifyBtn.disabled = false;
+  youtubeBtn.disabled = false;
+  spotifyBtn.classList.toggle("active", source === "spotify");
+  youtubeBtn.classList.toggle("active", source === "youtube");
 }
 
 // Fills the playlist filter dropdown with the distinct playlist names
@@ -102,25 +160,25 @@ function addButtonHtml(index) {
     </button>`;
 }
 
-function addedCellHtml(index, match) {
-  const videoUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(match.videoId)}`;
-
+// matchUrl is precomputed by app.js (it knows whether the destination is
+// YouTube or Spotify) — ui.js stays destination-agnostic.
+function addedCellHtml(index, match, matchUrl) {
   return `
     <div class="d-flex flex-column align-items-center gap-1">
       <button type="button" class="btn btn-sm btn-secondary" disabled>Added</button>
-      <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="small" title="${escapeHtml(match.title)}">View match</a>
+      <a href="${matchUrl}" target="_blank" rel="noopener noreferrer" class="small" title="${escapeHtml(match.title)}">View match</a>
       <button type="button" class="btn btn-sm btn-link p-0 re-search-btn" data-index="${index}">Re-search</button>
     </div>`;
 }
 
-// Marks a row as added and shows a link to the matched YouTube video plus a
+// Marks a row as added and shows a link to the matched song plus a
 // "Re-search" control, so a wrong match (e.g. a cover version outranking the
 // original) can be spotted and corrected instead of silently trusted forever.
 // No-ops if the row isn't the one currently on screen (a different page).
-export function markSongAdded(index, match) {
+export function markSongAdded(index, match, matchUrl) {
   const cell = document.getElementById(`addCell-${index}`);
   if (!cell) return;
-  cell.innerHTML = addedCellHtml(index, match);
+  fadeSwap(cell, () => { cell.innerHTML = addedCellHtml(index, match, matchUrl); });
 }
 
 // Reverts a row back to its initial "Add" button — used after "Re-search" is
@@ -128,15 +186,17 @@ export function markSongAdded(index, match) {
 export function resetSongRow(index) {
   const cell = document.getElementById(`addCell-${index}`);
   if (!cell) return;
-  cell.innerHTML = addButtonHtml(index);
+  fadeSwap(cell, () => { cell.innerHTML = addButtonHtml(index); });
 }
 
-function buildRow(songs, i, addedMatch) {
+// addedEntry is { match, matchUrl } from app.js's addedMatches map, or
+// undefined if this song hasn't been added this session.
+function buildRow(songs, i, addedEntry) {
   const artists  = songs.artists[i].map((a) => a.name).join(", ");
   const playlist = songs.playlists[i];
   const album    = songs.albums[i];
   const artCell  = `<img src="${songs.albumArts[i]}" width="48" height="48" style="border-radius:4px; display:block;" alt="Album art" loading="lazy">`;
-  const addCell  = addedMatch ? addedCellHtml(i, addedMatch) : addButtonHtml(i);
+  const addCell  = addedEntry ? addedCellHtml(i, addedEntry.match, addedEntry.matchUrl) : addButtonHtml(i);
 
   return `
     <tr>
@@ -153,7 +213,8 @@ function buildRow(songs, i, addedMatch) {
 // Builds the static table shell (header + empty body) plus the pagination
 // controls and "Add All" button. Rendered once per Initiate; only the
 // table body and pagination label are replaced after that (see renderPage).
-export function buildTableShell() {
+// destinationName labels the "Add All" button, e.g. "Add All to Youtube".
+export function buildTableShell(destinationName) {
   return `
     <table class="excel-table">
       <thead>
@@ -174,23 +235,29 @@ export function buildTableShell() {
       <span id="pageLabel" class="small"></span>
       <button type="button" class="btn btn-sm btn-outline-secondary" id="nextPageBtn">Next</button>
     </div>
-    <button type="button" class="btn btn-success" id="addToYoutubeBtn" style="margin-top: 1.2rem;">
-      Add All to YouTube
-    </button>`;
+    <div class="d-flex align-items-center gap-2" style="margin-top: 1.2rem;">
+      <button type="button" class="btn btn-outline-secondary" id="backToTopBtn">Back to Top</button>
+      <button type="button" class="btn btn-success" id="addAllBtn">
+        Add All to ${escapeHtml(destinationName)}
+      </button>
+    </div>`;
 }
 
 // Renders just the current page's slice of matchingIndexes into the table
-// body. addedMatches (index -> match) lets a row rendered on a page you've
-// navigated back to still show "Added" instead of reverting to a plain
-// "Add" button. pageSize of Infinity (the "All" option) shows everything —
-// handled as its own branch since `(1 - 1) * Infinity` is NaN, not 0.
+// body, fading the swap so paging/filtering doesn't feel like an abrupt
+// content jump. addedMatches (index -> { match, matchUrl }) lets a row
+// rendered on a page you've navigated back to still show "Added" instead of
+// reverting to a plain "Add" button. pageSize of Infinity (the "All" option)
+// shows everything — handled as its own branch since `(1 - 1) * Infinity` is NaN, not 0.
 export function renderPage(songs, matchingIndexes, page, pageSize, addedMatches) {
   const pageIndexes = pageSize === Infinity
     ? matchingIndexes
     : matchingIndexes.slice((page - 1) * pageSize, page * pageSize);
 
-  document.getElementById("songTableBody").innerHTML =
-    pageIndexes.map((i) => buildRow(songs, i, addedMatches.get(i))).join("");
+  const tbody = document.getElementById("songTableBody");
+  fadeSwap(tbody, () => {
+    tbody.innerHTML = pageIndexes.map((i) => buildRow(songs, i, addedMatches.get(i))).join("");
+  });
 }
 
 // Updates the "Page X of Y (showing N of M songs)" label and disables
