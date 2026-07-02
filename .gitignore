@@ -4,3 +4,6 @@ SpotifyToYoutube/config.js
 
 # Claude Code's local, per-machine settings — not meant to be shared/committed.
 .claude/
+
+# Design handoff reference doc — internal working material, not app code.
+design_handoff_spotify_to_youtube/
