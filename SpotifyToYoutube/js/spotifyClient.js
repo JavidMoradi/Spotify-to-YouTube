@@ -4,6 +4,7 @@
 
 import { SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI } from '../config.js';
 import { auth, persistAuth } from './state.js';
+import { showToast } from './toast.js';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
@@ -151,13 +152,13 @@ export async function exchangeSpotifyCode(code) {
     // Spotify returned a non-JSON body — log the raw response to help diagnose the cause.
     console.error("Spotify token exchange failed. Raw response:", text);
     console.error("Redirect URI sent:", SPOTIFY_REDIRECT_URI);
-    alert("Spotify connection failed. Check the browser console for details.");
+    showToast("Spotify connection failed. Check the browser console for details.");
     return;
   }
 
   if (data.error) {
     console.error("Spotify token exchange error:", data.error, "-", data.error_description);
-    alert(`Spotify error: ${data.error_description || data.error}`);
+    showToast(`Spotify error: ${data.error_description || data.error}`);
     return;
   }
 

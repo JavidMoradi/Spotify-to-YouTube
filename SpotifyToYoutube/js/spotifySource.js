@@ -2,6 +2,7 @@
 
 import { auth, songs, PLACEHOLDER_ALBUM_ART } from './state.js';
 import { fetchAllPages } from './spotifyClient.js';
+import { showToast } from './toast.js';
 
 // Loads all playlists and their tracks into the songs state object.
 // Returns false if the API call fails (e.g. expired token).
@@ -11,7 +12,7 @@ export async function fetchAllTracks() {
   );
 
   if (!playlists) {
-    alert("Failed to load Spotify playlists. Your token may have expired — please reconnect.");
+    showToast("Failed to load Spotify playlists. Your token may have expired — please reconnect.");
     return false;
   }
 

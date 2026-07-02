@@ -1,4 +1,7 @@
-import { auth, songs, loadPersistedAuth, clearPersistedAuth } from './state.js';
+import {
+  auth, songs, loadPersistedAuth, clearPersistedAuth,
+  persistLibrary, loadPersistedLibrary, clearPersistedLibrary,
+} from './state.js';
 import { connectSpotify, exchangeSpotifyCode, fetchSpotifyProfile } from './spotifyClient.js';
 import { connectYouTube } from './youtubeClient.js';
 import {
@@ -6,10 +9,10 @@ import {
   addedMatches, addAllToDestination, addSongToDestination, forgetMatch, resetTransferState,
 } from './transfer.js';
 import {
-  markConnected, checkBothConnected, showAppScreen, resetToAuthScreen,
+  markConnected, checkBothConnected, showAppScreen, showAuthScreen, resetToAuthScreen,
   resetSongRow, populatePlaylistFilter, setSourceDirection, lockDirectionToggle,
   getMatchingIndexes, buildLibraryShell, renderPage, renderPaginationControls,
-  initTheme, toggleTheme,
+  initTheme, toggleTheme, startLoadingTimeout, cancelLoadingTimeout, showLoadingTimeoutMessage,
 } from './ui.js';
 
 initTheme();
@@ -18,6 +21,17 @@ document.getElementById("themeToggle").addEventListener("click", toggleTheme);
 let matchingIndexes = []; // song indexes matching the current search/playlist filter
 let currentPage     = 1;
 let pageSize        = 100; // 50 / 100 / 200, or Infinity for "All"
+let cancelStartup   = false; // set by the loading-timeout escape hatch, checked by initiate()
+
+// Escape hatch shown on the loading screen if startup is taking a while (or
+// fails outright) — lets the user bail out and reconnect instead of staring
+// at a spinner forever.
+document.getElementById("loadingTimeoutLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  cancelStartup = true;
+  cancelLoadingTimeout();
+  logout();
+});
 
 // ─── Spotify OAuth Callback ───────────────────────────────────────────────────
 // Module scripts are deferred, so the DOM is ready at this point.
@@ -28,53 +42,89 @@ const code   = params.get("code");
 const state  = params.get("state");
 
 (async () => {
-  // Restore any previously saved tokens before deciding what to show.
-  loadPersistedAuth();
-  // Reflect the restored transfer direction in the header toggle immediately —
-  // otherwise it would visually default to "Spotify" while initiate() (below)
-  // silently uses whichever direction was actually last selected.
-  setSourceDirection(currentSourceKey());
-  if (auth.spotifyAccessToken) markConnected("spotify");
-  if (auth.youtubeAccessToken) markConnected("youtube");
-  checkBothConnected();
+  // Shown by default (see #loadingScreen in index.html) until this resolves
+  // one way or the other — reveals the escape-hatch message if that takes
+  // more than a few seconds, so a hung request never leaves the user staring
+  // at a bare spinner with no way out.
+  startLoadingTimeout();
 
-  if (code && state === "spotify") {
-    // Remove the query string so refreshing the page doesn't re-attempt the exchange.
-    window.history.replaceState({}, document.title, window.location.pathname);
+  try {
+    // Restore any previously saved tokens before deciding what to show.
+    loadPersistedAuth();
+    // Reflect the restored transfer direction in the header toggle immediately —
+    // otherwise it would visually default to "Spotify" while initiate() (below)
+    // silently uses whichever direction was actually last selected.
+    setSourceDirection(currentSourceKey());
+    if (auth.spotifyAccessToken) markConnected("spotify");
+    if (auth.youtubeAccessToken) markConnected("youtube");
+    checkBothConnected();
 
-    await exchangeSpotifyCode(code);
-    sessionStorage.removeItem("spotify_code_verifier");
-    if (auth.spotifyAccessToken) {
-      await fetchSpotifyProfile();
-      markConnected("spotify");
-      checkBothConnected();
+    if (code && state === "spotify") {
+      // Remove the query string so refreshing the page doesn't re-attempt the exchange.
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      await exchangeSpotifyCode(code);
+      sessionStorage.removeItem("spotify_code_verifier");
+      if (auth.spotifyAccessToken) {
+        await fetchSpotifyProfile();
+        markConnected("spotify");
+        checkBothConnected();
+      }
     }
-  }
 
-  // Both accounts already connected (just now, or restored from storage) —
-  // skip straight to the song table instead of making the user click Initiate.
-  if (auth.spotifyAccessToken && auth.youtubeAccessToken) {
-    await initiate();
+    // Both accounts already connected (just now, or restored from storage) —
+    // skip straight to the song table instead of making the user click Initiate,
+    // and (crucially) without ever showing the auth screen in between.
+    if (auth.spotifyAccessToken && auth.youtubeAccessToken) {
+      await initiate();
+    } else {
+      cancelLoadingTimeout();
+      showAuthScreen();
+    }
+  } catch (err) {
+    // Something in startup itself broke (not a normal, already-handled API
+    // failure) — surface the escape hatch immediately rather than making
+    // the user wait out the full timeout to discover they're stuck.
+    console.error("Startup failed:", err);
+    showLoadingTimeoutMessage();
   }
 })();
 
 // ─── Core Flows ───────────────────────────────────────────────────────────────
 
 async function initiate() {
+  cancelStartup = false;
+
   const btn = document.getElementById("initiateBtn");
   btn.innerHTML   = '<span class="spinner" aria-hidden="true"></span>';
   btn.setAttribute("aria-busy", "true");
   btn.disabled    = true;
   lockDirectionToggle();
 
-  const ok = await currentSourceFetcher()();
-  if (!ok) {
-    // A restored token can still be rejected by the API (e.g. revoked
-    // server-side) even though it hadn't reached our stored expiry — treat
-    // that the same as an explicit logout so the user can reconnect.
-    logout();
-    return;
+  // A page refresh re-runs this (see the IIFE above) with auth already
+  // restored — reuse the library already fetched this tab session instead
+  // of silently re-listing every playlist and track again. Keyed by
+  // direction so switching source correctly falls through to a fresh fetch.
+  const restoredFromSession = loadPersistedLibrary(currentSourceKey());
+
+  if (!restoredFromSession) {
+    const ok = await currentSourceFetcher()();
+    // The loading-timeout escape hatch was clicked while this was in
+    // flight — the user has already been sent back to the auth screen, so
+    // don't let a late-arriving response pull them back into the app screen.
+    if (cancelStartup) return;
+    if (!ok) {
+      // A restored token can still be rejected by the API (e.g. revoked
+      // server-side) even though it hadn't reached our stored expiry — treat
+      // that the same as an explicit logout so the user can reconnect.
+      logout();
+      return;
+    }
+    persistLibrary(currentSourceKey());
   }
+
+  if (cancelStartup) return;
+  cancelLoadingTimeout();
 
   document.getElementById("mainDiv").innerHTML = buildLibraryShell(currentDestinationLabel());
   populatePlaylistFilter(songs.playlists);
@@ -83,7 +133,10 @@ async function initiate() {
   currentPage     = 1;
   renderCurrentPage();
 
-  showAppScreen(`${currentSourceLabel()} → ${currentDestinationLabel()}`);
+  if (currentSourceKey() === "youtube")
+    showAppScreen(`${currentSourceLabel()} → ${currentDestinationLabel()}<sup style="color:#999;font-size:0.65em;"> \u0020Beta</sup>`);
+  else 
+    showAppScreen(`${currentSourceLabel()} → ${currentDestinationLabel()}`);
 }
 
 // Recomputes which songs match the current search/playlist filter and jumps
@@ -110,6 +163,7 @@ function goToPage(delta) {
 
 function logout() {
   clearPersistedAuth();
+  clearPersistedLibrary();
 
   songs.names = [];
   songs.artists = [];

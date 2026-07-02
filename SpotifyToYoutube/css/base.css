@@ -1,0 +1,122 @@
+/* Global reset, keyframes, and chrome shared by both screens (glass
+   recipe, ambient glow blobs, theme toggle, spinner, screen crossfade
+   mechanism). Screen-specific rules live in auth-screen.css / app-screen.css. */
+
+@keyframes floatGlow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(2%, -3%) scale(1.05); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Ring spinner shown on the Initiate button while the library loads.
+   Uses currentColor so it reads correctly against whatever text color
+   the button currently has (disabled/enabled both apply). */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.85;
+  vertical-align: middle;
+  animation: spin 0.7s linear infinite;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg-gradient);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+  color: var(--text-primary);
+  transition: background var(--motion);
+  overflow-x: hidden;
+}
+
+button, input, select { font-family: inherit; }
+
+button:not(:disabled) { cursor: pointer; transition: transform var(--motion-fast); }
+button:hover:not(:disabled) { transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0); }
+
+/* ── Glass surface recipe — applied via class="glass ..." ── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* ── App icon: the favicon.svg badge reused at two sizes — a larger mark
+   above the auth card's heading, a small one in the topbar. It's an opaque
+   gradient badge (not theme-dependent), so one file/rule set covers both
+   light and dark mode without separate variants. ── */
+.app-icon { display: block; border-radius: 22%; }
+.app-icon-auth { width: 56px; height: 56px; margin: 0 auto 14px; box-shadow: 0 10px 24px var(--accent-soft); }
+.app-icon-nav { width: 22px; height: 22px; }
+
+/* ── Ambient decorative glow blobs ── */
+.glow {
+  position: fixed;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: var(--glow-opacity);
+  pointer-events: none;
+  animation: floatGlow 14s ease-in-out infinite;
+  z-index: 0;
+}
+.glow-a { top: -10%; left: -5%; background: var(--glow-a); }
+.glow-b { top: 60%; left: 70%; background: var(--glow-b); animation-delay: -7s; }
+
+/* ── Theme toggle: always visible, independent of which screen shows ── */
+.theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 50;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  padding: 3px;
+  border: none;
+}
+.theme-knob {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--knob-bg);
+  transform: translateX(var(--knob-x));
+  transition: transform var(--motion-fast), background-color var(--motion-fast);
+}
+/* Icon sits in whichever side of the track the knob has vacated —
+   moon on the left in dark mode (knob slid right), sun on the right
+   in light mode (knob slid left). */
+.theme-toggle::before {
+  content: "🌙";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}
+html.light .theme-toggle::before {
+  content: "☀️";
+  left: auto;
+  right: 6px;
+}
+
+/* ── Screen crossfade: loading screen -> auth screen <-> app screen ── */
+#loadingScreen, #authSection, #appScreen { transition: opacity 0.25s ease; }
+.fade-hidden { opacity: 0; }

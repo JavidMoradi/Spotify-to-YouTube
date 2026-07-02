@@ -4,6 +4,7 @@
 
 import { auth } from './state.js';
 import { fetchWithRetry, fetchAllPages, throwIfApiError } from './spotifyClient.js';
+import { normalizeTitle } from './textMatch.js';
 
 // Returns the id of the user's own playlist with the given name, or null if
 // none exists yet. Filtered to playlists the user actually owns — /me/playlists
@@ -38,28 +39,40 @@ async function createSpotifyPlaylist(title) {
   return data.id;
 }
 
-// Returns the set of track URIs already present in a playlist, paginating
-// through all pages of results.
-async function fetchSpotifyPlaylistUris(playlistId) {
+// Returns everything already in a playlist needed for duplicate detection:
+// exact track uris, plus normalized "name artists" titles (see textMatch.js)
+// so a song present under a *different* track — a different release, or a
+// version added manually or by an earlier/different search — is still
+// caught even when the uri doesn't match. Paginates through all results.
+async function fetchSpotifyPlaylistContents(playlistId) {
   const items = await fetchAllPages(
-    `https://api.spotify.com/v1/playlists/${playlistId}/tracks?fields=items(track(uri)),next&limit=100`
+    `https://api.spotify.com/v1/playlists/${playlistId}/tracks?fields=items(track(uri,name,artists(name))),next&limit=100`
   );
-  if (!items) return new Set();
+  const uris   = new Set();
+  const titles = new Set();
+  if (!items) return { uris, titles };
 
-  return new Set(items.filter((item) => item.track).map((item) => item.track.uri));
+  items.forEach((item) => {
+    if (!item.track) return;
+    uris.add(item.track.uri);
+    const artistNames = item.track.artists.map((a) => a.name).join(" ");
+    titles.add(normalizeTitle(`${item.track.name} ${artistNames}`));
+  });
+
+  return { uris, titles };
 }
 
 // Finds the user's Spotify playlist matching `title` (creating it if it
-// doesn't exist) and returns its id along with the track URIs it already
-// contains, so callers can detect and skip duplicates before adding.
+// doesn't exist) and returns its id along with what it already contains, so
+// callers can detect and skip duplicates before adding.
 export async function ensureSpotifyPlaylist(title) {
   let playlistId = await findSpotifyPlaylistByTitle(title);
   if (!playlistId) {
     playlistId = await createSpotifyPlaylist(title);
   }
 
-  const uris = await fetchSpotifyPlaylistUris(playlistId);
-  return { id: playlistId, uris };
+  const { uris, titles } = await fetchSpotifyPlaylistContents(playlistId);
+  return { id: playlistId, uris, titles };
 }
 
 // Searches Spotify for a track and returns { uri, title } for the top

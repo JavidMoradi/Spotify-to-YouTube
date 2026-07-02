@@ -2,6 +2,7 @@
 
 import { auth } from './state.js';
 import { throwIfApiError, fetchAllYouTubeItems } from './youtubeClient.js';
+import { normalizeTitle } from './textMatch.js';
 
 // Creates a new private YouTube playlist and returns its ID.
 async function createYouTubePlaylist(title) {
@@ -74,24 +75,35 @@ async function findPlaylistByTitle(title) {
   return match ? match.id : null;
 }
 
-// Returns the set of video IDs already present in a playlist, paginating
-// through all pages of results.
-async function fetchPlaylistVideoIds(playlistId) {
+// Returns everything already in a playlist needed for duplicate detection:
+// exact video ids, plus normalized titles (see textMatch.js) so a song
+// present under a *different* video — added manually, or matched by an
+// earlier/different search — is still caught even when the id doesn't match.
+async function fetchPlaylistContents(playlistId) {
   const items = await fetchAllYouTubeItems(
-    `https://youtube.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${playlistId}`
+    `https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}`
   );
-  return new Set(items.map((item) => item.contentDetails.videoId));
+
+  const videoIds = new Set();
+  const titles   = new Set();
+
+  items.forEach((item) => {
+    videoIds.add(item.snippet.resourceId.videoId);
+    titles.add(normalizeTitle(item.snippet.title));
+  });
+
+  return { videoIds, titles };
 }
 
 // Finds the user's "Spotify to Youtube" playlist (creating it if it doesn't
-// exist yet) and returns its id along with the video IDs it already
-// contains, so callers can detect and skip duplicates before adding.
+// exist yet) and returns its id along with what it already contains, so
+// callers can detect and skip duplicates before adding.
 export async function ensureYouTubePlaylist(title = "Spotify to Youtube") {
   let playlistId = await findPlaylistByTitle(title);
   if (!playlistId) {
     playlistId = await createYouTubePlaylist(title);
   }
 
-  const videoIds = await fetchPlaylistVideoIds(playlistId);
-  return { id: playlistId, videoIds };
+  const { videoIds, titles } = await fetchPlaylistContents(playlistId);
+  return { id: playlistId, videoIds, titles };
 }

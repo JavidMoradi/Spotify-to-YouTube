@@ -7,6 +7,7 @@
 
 import { auth, songs, PLACEHOLDER_ALBUM_ART } from './state.js';
 import { YouTubeAuthError, YouTubeQuotaError, throwIfApiError, fetchAllYouTubeItems } from './youtubeClient.js';
+import { showToast } from './toast.js';
 
 // ─── Title/Description Parsing ─────────────────────────────────────────────────
 
@@ -184,11 +185,11 @@ export async function fetchAllYouTubePlaylists() {
     return true;
   } catch (err) {
     if (err instanceof YouTubeAuthError) {
-      alert("Failed to load YouTube playlists. Your session may have expired — please reconnect.");
+      showToast("Failed to load YouTube playlists. Your session may have expired — please reconnect.");
       return false;
     }
     if (err instanceof YouTubeQuotaError) {
-      alert(
+      showToast(
         "The daily YouTube API quota was reached while loading your playlists. YouTube resets it " +
         "around midnight Pacific Time — please come back after that."
       );

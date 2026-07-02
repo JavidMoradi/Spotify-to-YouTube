@@ -4,6 +4,7 @@
 
 import { GOOGLE_CLIENT_ID } from '../config.js';
 import { auth, persistAuth } from './state.js';
+import { showToast } from './toast.js';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ export function throwIfApiError(data, res) {
 export function connectYouTube(onSuccess) {
   // GIS loads asynchronously — guard against clicking the button before it's ready.
   if (typeof google === "undefined") {
-    alert("Google services are still loading. Please try again in a moment.");
+    showToast("Google services are still loading. Please try again in a moment.");
     return;
   }
 

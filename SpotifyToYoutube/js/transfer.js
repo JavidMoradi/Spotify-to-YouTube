@@ -9,7 +9,9 @@ import { SpotifyAuthError } from './spotifyClient.js';
 import { fetchAllYouTubePlaylists } from './youtubeSource.js';
 import { ensureYouTubePlaylist, searchVideo, addVideoToPlaylist } from './youtubeDestination.js';
 import { YouTubeQuotaError, YouTubeAuthError } from './youtubeClient.js';
+import { normalizeTitle } from './textMatch.js';
 import { markSongAdded } from './ui.js';
+import { showToast } from './toast.js';
 
 // "spotify-to-youtube" (default) or "youtube-to-spotify" — set by the
 // Spotify/Youtube toggle in the header, locked once Initiate is clicked.
@@ -47,13 +49,24 @@ export function currentSourceFetcher() {
 
 // Each direction reuses the same add-flow logic against a different pair of
 // service calls — this adapter is the only per-service branching needed.
+//
+// isDuplicate checks BOTH the exact id and a normalized-title match. Exact
+// id alone isn't enough: if a song is already in the destination playlist
+// under a *different* track/video (added manually, or matched by an
+// earlier/different search), a fresh search can legitimately return a
+// different id for what's really the same song, and an id-only check would
+// miss it — silently adding a perceived duplicate.
 const destinations = {
   youtube: {
     label:          "YouTube",
     ensurePlaylist: ensureYouTubePlaylist,
-    existingIds:    (playlist) => playlist.videoIds,
+    isDuplicate:    (playlist, match) =>
+      playlist.videoIds.has(match.videoId) || playlist.titles.has(normalizeTitle(match.title)),
+    recordExisting: (playlist, match) => {
+      playlist.videoIds.add(match.videoId);
+      playlist.titles.add(normalizeTitle(match.title));
+    },
     search:         searchVideo,
-    matchKey:       (match) => match.videoId,
     insert:         (playlistId, match) => addVideoToPlaylist(playlistId, match.videoId, match.kind),
     viewUrl:        (match) => `https://www.youtube.com/watch?v=${encodeURIComponent(match.videoId)}`,
     isQuotaError:   (err) => err instanceof YouTubeQuotaError,
@@ -62,9 +75,13 @@ const destinations = {
   spotify: {
     label:          "Spotify",
     ensurePlaylist: ensureSpotifyPlaylist,
-    existingIds:    (playlist) => playlist.uris,
+    isDuplicate:    (playlist, match) =>
+      playlist.uris.has(match.uri) || playlist.titles.has(normalizeTitle(match.title)),
+    recordExisting: (playlist, match) => {
+      playlist.uris.add(match.uri);
+      playlist.titles.add(normalizeTitle(match.title));
+    },
     search:         searchSpotifyTrack,
-    matchKey:       (match) => match.uri,
     insert:         (playlistId, match) => addTrackToSpotifyPlaylist(playlistId, match.uri),
     viewUrl:        (match) => `https://open.spotify.com/track/${match.uri.split(":").pop()}`,
     isQuotaError:   () => false, // Spotify has no hard daily quota, only a rolling rate limit (already retried)
@@ -83,7 +100,7 @@ export function currentDestinationLabel() {
 // Mirrors each source playlist to a same-named playlist on the destination
 // service rather than dumping every song into one — e.g. a song from "XYZ"
 // goes into a destination playlist also named "XYZ" (reusing it if the user
-// already has one). Resolves playlist title -> Promise<{ id, <existingIds> }>,
+// already has one). Resolves playlist title -> Promise<{ id, ...contents }>,
 // cached so each title is only looked up/created once per session.
 const playlistCache = new Map();
 
@@ -104,7 +121,7 @@ function getPlaylistFor(title) {
 // pop 50 identical alerts on its way to stopping. Only YouTube has this
 // failure mode (Spotify has no hard daily quota).
 function notifyQuotaExceeded() {
-  alert(
+  showToast(
     "The daily YouTube API quota has been reached. YouTube resets it around midnight " +
     "Pacific Time — please come back after that to keep adding songs."
   );
@@ -200,14 +217,13 @@ export async function addAllToDestination(matchingIndexes, onAuthExpired) {
       const match = await getOrSearchMatch(i);
       if (!match) continue;
 
-      const existingIds = dest.existingIds(playlist);
-      if (existingIds.has(dest.matchKey(match))) {
+      if (dest.isDuplicate(playlist, match)) {
         recordAdded(i, match, dest);
         continue;
       }
 
       const added = await insertWithSelfHeal(i, playlist, match);
-      existingIds.add(dest.matchKey(added));
+      dest.recordExisting(playlist, added);
       recordAdded(i, added, dest);
     } catch (err) {
       if (dest.isQuotaError(err)) {
@@ -215,7 +231,7 @@ export async function addAllToDestination(matchingIndexes, onAuthExpired) {
         return; // stop the whole batch — every remaining song will fail the same way
       }
       if (dest.isAuthError(err)) {
-        alert(`Your ${dest.label} connection has expired. Please reconnect.`);
+        showToast(`Your ${dest.label} connection has expired. Please reconnect.`);
         onAuthExpired();
         return;
       }
@@ -242,21 +258,20 @@ export async function addSongToDestination(index, onAuthExpired) {
     const match = await getOrSearchMatch(index);
 
     if (!match) {
-      alert(`Couldn't find a match for "${songs.names[index]}" on ${dest.label}.`);
+      showToast(`Couldn't find a match for "${songs.names[index]}" on ${dest.label}.`);
       btn.disabled = false;
       btn.textContent = "Add";
       return;
     }
 
-    const existingIds = dest.existingIds(playlist);
-    if (existingIds.has(dest.matchKey(match))) {
-      alert(`"${songs.names[index]}" is already in the ${playlistName} playlist on ${dest.label}.`);
+    if (dest.isDuplicate(playlist, match)) {
+      showToast(`"${songs.names[index]}" is already in the ${playlistName} playlist on ${dest.label}.`);
       recordAdded(index, match, dest);
       return;
     }
 
     const added = await insertWithSelfHeal(index, playlist, match);
-    existingIds.add(dest.matchKey(added));
+    dest.recordExisting(playlist, added);
     recordAdded(index, added, dest);
   } catch (err) {
     btn.disabled = false;
@@ -267,13 +282,13 @@ export async function addSongToDestination(index, onAuthExpired) {
       return;
     }
     if (dest.isAuthError(err)) {
-      alert(`Your ${dest.label} connection has expired. Please reconnect.`);
+      showToast(`Your ${dest.label} connection has expired. Please reconnect.`);
       onAuthExpired();
       return;
     }
 
     console.error(`Failed to add "${songs.names[index]}":`, err);
-    alert(`Something went wrong adding "${songs.names[index]}" — please try again.`);
+    showToast(`Something went wrong adding "${songs.names[index]}" — please try again.`);
   }
 }
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- App icon: a rounded gradient badge (reuses the same accent gradient as
+       the primary CTA button) with a bidirectional swap-arrows glyph,
+       symbolizing transferring a library back and forth between services.
+       Opaque and self-contained, so it reads identically in light/dark theme. -->
+  <defs>
+    <linearGradient id="badgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" rx="15" fill="url(#badgeGradient)"/>
+  <path d="M11 18H31M31 18L25 12M31 18L25 24"
+        fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M37 30H17M17 30L23 24M17 30L23 36"
+        fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+</svg>

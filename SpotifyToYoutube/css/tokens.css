@@ -1,0 +1,72 @@
+/* ═══════════════════════ Design tokens ═══════════════════════
+   Default (no class on <html>) is the dark theme; html.light
+   overrides every token below for the light theme. Toggled by
+   initTheme()/toggleTheme() in ui.js. */
+:root {
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --accent-soft: rgba(99, 102, 241, 0.28);
+  --add-text: #c7d2fe;
+  --spotify: #1ed760;
+  --youtube: #ff3b30;
+
+  --text-primary: rgba(255, 255, 255, 0.94);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary: rgba(255, 255, 255, 0.4);
+
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-bg-strong: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+
+  --nav-bg: rgba(15, 16, 28, 0.55);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.15);
+
+  --bg-gradient: radial-gradient(1200px 800px at 15% 0%, #241f4d 0%, transparent 60%),
+    radial-gradient(1000px 700px at 100% 100%, #1a1440 0%, transparent 55%),
+    linear-gradient(160deg, #0f1120 0%, #171233 55%, #1c1442 100%);
+
+  --glow-a: #4338ca;
+  --glow-b: #7c3aed;
+  --glow-opacity: 0.35;
+
+  --knob-bg: #e2e8f0;
+  --knob-x: 22px;
+
+  --motion: 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-fast: 0.2s ease;
+}
+
+html.light {
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --add-text: var(--accent);
+
+  --text-primary: rgba(20, 20, 30, 0.92);
+  --text-secondary: rgba(20, 20, 30, 0.58);
+  --text-tertiary: rgba(20, 20, 30, 0.38);
+
+  /* Darker/more-tinted than the original near-white pass — glass
+     cards were barely distinguishable from the page background. */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-bg-strong: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(30, 30, 60, 0.14);
+  --glass-shadow: 0 20px 50px rgba(30, 30, 60, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+
+  --nav-bg: rgba(255, 255, 255, 0.68);
+  --input-bg: rgba(30, 30, 60, 0.055);
+  --success: #059669;
+  --success-soft: rgba(5, 150, 105, 0.1);
+
+  --bg-gradient: radial-gradient(1200px 800px at 15% 0%, #dde1fa 0%, transparent 60%),
+    radial-gradient(1000px 700px at 100% 100%, #ece0fa 0%, transparent 55%),
+    linear-gradient(160deg, #e8ebf6 0%, #dcdff2 55%, #dad3ee 100%);
+
+  --glow-a: #a5b4fc;
+  --glow-b: #f0abfc;
+  --glow-opacity: 0.45;
+
+  --knob-bg: #1e1b4b;
+  --knob-x: 0px;
+}

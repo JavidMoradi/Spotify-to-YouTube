@@ -70,11 +70,11 @@ function fadeSwap(el, swap, fadeMs = CONTENT_FADE_MS) {
   }, fadeMs);
 }
 
-// Crossfades from one full-screen section to another (auth screen <->
-// app screen): fades `from` out, swaps which one is actually laid out via
-// `display`, then fades `to` in. `onHidden` (optional) runs right after
-// `from` is set to display:none — for cleanup (e.g. clearing the song list)
-// that would otherwise visibly jump if done before the fade-out finishes.
+// Crossfades from one full-screen section to another: fades `from` out,
+// swaps which one is actually laid out via `display`, then fades `to` in.
+// `onHidden` (optional) runs right after `from` is set to display:none — for
+// cleanup (e.g. clearing the song list) that would otherwise visibly jump if
+// done before the fade-out finishes.
 function crossfadeScreens(from, to, toDisplay, onHidden) {
   fadeSwap(from, () => {
     from.style.display = "none";
@@ -83,12 +83,70 @@ function crossfadeScreens(from, to, toDisplay, onHidden) {
   }, SCREEN_FADE_MS);
 }
 
-// Crossfades from the auth screen to the app screen (top bar + filters +
-// song list) once Initiate has finished loading the library. brandText
-// reflects the direction locked in at Initiate time, e.g. "Spotify → Youtube".
+// There are three top-level screens — #loadingScreen (shown by default,
+// before app.js has decided anything), #authSection, and #appScreen — and
+// exactly one is ever visible at a time. Uses computed style, not inline
+// style, since the initially-visible screen is only visible via its base
+// CSS rule and has no inline style set yet.
+const SCREEN_IDS = ["loadingScreen", "authSection", "appScreen"];
+
+function currentScreenEl() {
+  for (const id of SCREEN_IDS) {
+    const el = document.getElementById(id);
+    if (getComputedStyle(el).display !== "none") return el;
+  }
+  return document.getElementById("loadingScreen");
+}
+
+// Crossfades from whichever screen is currently showing to `targetId`.
+function goToScreen(targetId, onHidden) {
+  const from = currentScreenEl();
+  if (from.id === targetId) return;
+  crossfadeScreens(from, document.getElementById(targetId), "flex", onHidden);
+}
+
+// Crossfades to the auth screen — used the first time app.js determines the
+// user isn't (yet, or anymore) fully connected. Unlike resetToAuthScreen,
+// this doesn't reset any fields, since on a fresh load they're already in
+// whatever state loadPersistedAuth/setSourceDirection left them in.
+export function showAuthScreen() {
+  goToScreen("authSection");
+}
+
+// Crossfades to the app screen (top bar + filters + song list) once
+// Initiate has finished loading the library. brandText reflects the
+// direction locked in at Initiate time, e.g. "Spotify → Youtube" — innerHTML
+// (not textContent) since app.js sometimes passes a trailing <sup>Beta</sup>
+// tag; brandText is always app-built from fixed service labels, never from
+// user/API-controlled text, so this is safe without escaping.
 export function showAppScreen(brandText) {
-  document.getElementById("brandText").textContent = brandText;
-  crossfadeScreens(document.getElementById("authSection"), document.getElementById("appScreen"), "flex");
+  document.getElementById("brandText").innerHTML = brandText;
+  goToScreen("appScreen");
+}
+
+// ─── Loading Screen Timeout ─────────────────────────────────────────────────
+// Gives the user an escape hatch if startup ever gets stuck (a hung
+// request, an unexpected error) instead of leaving them staring at a
+// spinner forever with no way out.
+
+let loadingTimeoutTimer = null;
+
+// Arms the "taking too long" fallback — call once when startup begins.
+export function startLoadingTimeout(delayMs = 8000) {
+  clearTimeout(loadingTimeoutTimer);
+  loadingTimeoutTimer = window.setTimeout(showLoadingTimeoutMessage, delayMs);
+}
+
+// Disarms it — call once startup has resolved (landed on either screen).
+export function cancelLoadingTimeout() {
+  clearTimeout(loadingTimeoutTimer);
+}
+
+// Reveals the fallback message immediately — used both by the timer above
+// and by an explicit startup failure, so the user isn't left waiting the
+// full timeout to find out something went wrong.
+export function showLoadingTimeoutMessage() {
+  document.getElementById("loadingTimeoutMsg").classList.add("visible");
 }
 
 // Disables the Spotify/Youtube source-direction toggle once Initiate has
@@ -124,15 +182,12 @@ export function resetToAuthScreen() {
 
   setSourceDirection("spotify");
 
-  // Clear the song list only once the app screen has actually faded out and
-  // gone display:none — clearing it immediately would make it vanish
+  // Clear the song list only once the outgoing screen has actually faded out
+  // and gone display:none — clearing it immediately would make it vanish
   // instantly while the rest of the screen was still visibly fading around it.
-  crossfadeScreens(
-    document.getElementById("appScreen"),
-    document.getElementById("authSection"),
-    "flex",
-    () => { document.getElementById("mainDiv").innerHTML = ""; }
-  );
+  // (Logout can happen from the loading screen too — the loading-timeout
+  // escape hatch calls this — not just from the app screen.)
+  goToScreen("authSection", () => { document.getElementById("mainDiv").innerHTML = ""; });
 }
 
 // Slides the direction indicator behind whichever source is selected, flips

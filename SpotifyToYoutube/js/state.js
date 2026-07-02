@@ -111,3 +111,47 @@ export function clearCachedMatch(trackId) {
   delete matchCache[trackId];
   persistMatchCache();
 }
+
+// ─── Library Snapshot (session-only) ─────────────────────────────────────────
+// The fetched song library (the expensive "list every playlist and every
+// track" step) is cached in sessionStorage — NOT localStorage — so a page
+// refresh restores it directly instead of silently re-fetching from Spotify
+// or YouTube. sessionStorage is the deliberate choice here: it survives a
+// reload/F5 within the same tab (the actual complaint this fixes) but is
+// cleared when the tab/browser closes, so a long-since-abandoned tab
+// reopened later still starts from a genuinely fresh fetch instead of
+// showing an indefinitely stale library.
+const LIBRARY_STORAGE_KEY = "s2y_library";
+
+// Saves the current `songs` contents tagged with the direction they were
+// fetched for ("spotify" or "youtube" — see currentSourceKey in transfer.js),
+// so a restore attempt for the *other* direction correctly misses and
+// triggers a fresh fetch instead of showing the wrong library.
+export function persistLibrary(directionKey) {
+  sessionStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ directionKey, songs }));
+}
+
+// Restores a persisted library snapshot into `songs` if one exists and
+// matches `directionKey`. Returns true if restored (caller can skip the
+// fetch entirely), false if there was nothing usable (caller should fetch fresh).
+export function loadPersistedLibrary(directionKey) {
+  const raw = sessionStorage.getItem(LIBRARY_STORAGE_KEY);
+  if (!raw) return false;
+
+  let saved;
+  try {
+    saved = JSON.parse(raw);
+  } catch {
+    sessionStorage.removeItem(LIBRARY_STORAGE_KEY);
+    return false;
+  }
+
+  if (saved.directionKey !== directionKey || !saved.songs) return false;
+
+  Object.assign(songs, saved.songs);
+  return true;
+}
+
+export function clearPersistedLibrary() {
+  sessionStorage.removeItem(LIBRARY_STORAGE_KEY);
+}
