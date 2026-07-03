@@ -1,6 +1,10 @@
 name = "segue"
 compatibility_date = "2026-07-03"
 
+# Publish to <name>.<your-subdomain>.workers.dev — requires a workers.dev
+# subdomain to be registered once for the account (dash.cloudflare.com/.../workers/onboarding).
+workers_dev = true
+
 # Serves this app as a static-asset Worker (Cloudflare's current recommended
 # path — no separate "Pages project" involved, hence the plain `wrangler
 # deploy` in the Cloudflare Pages/Workers project's Deploy command, not
