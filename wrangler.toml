@@ -1,0 +1,10 @@
+name = "segue"
+compatibility_date = "2026-07-03"
+
+# Serves this app as a static-asset Worker (Cloudflare's current recommended
+# path — no separate "Pages project" involved, hence the plain `wrangler
+# deploy` in the Cloudflare Pages/Workers project's Deploy command, not
+# `wrangler pages deploy`). config.js is generated into this folder by
+# generate-config.sh (the Build command) before this runs.
+[assets]
+directory = "./SpotifyToYoutube"
